@@ -2,8 +2,10 @@ import mongoose from 'mongoose';
 import app from './app.js';
 import { env } from './config/env.js';
 import { connectDatabase } from './config/db.js';
+import { validateJwtConfig } from './middleware/adminAuth.js';
 
 try {
+  validateJwtConfig();
   await connectDatabase();
   const server = app.listen(env.port, env.host, () => {
     console.info(`Manglam Furniture API: http://${env.host}:${env.port}`);
@@ -32,7 +34,11 @@ try {
 
   process.on('SIGINT', shutdown);
   process.on('SIGTERM', shutdown);
-} catch {
-  console.error('Startup failed. Check MONGODB_URI and make sure MongoDB is reachable.');
+} catch (error) {
+  if (error.message.startsWith('JWT_')) {
+    console.error(`Startup failed: ${error.message}`);
+  } else {
+    console.error('Startup failed. Check MONGODB_URI and make sure MongoDB is reachable.');
+  }
   process.exit(1);
 }
