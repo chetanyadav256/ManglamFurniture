@@ -15,7 +15,7 @@ export function validateJwtConfig() {
 export function createAdminToken(admin) {
   validateJwtConfig();
   return jwt.sign(
-    { sub: String(admin._id) },
+    { sub: String(admin._id), tokenVersion: admin.tokenVersion ?? 0 },
     env.jwtSecret,
     { algorithm: 'HS256', expiresIn: env.jwtExpiresIn },
   );
@@ -35,8 +35,14 @@ export function requireAdminRole(requiredRole = 'admin') {
       if (!payload || typeof payload !== 'object' || typeof payload.sub !== 'string') {
         return res.status(401).json({ message: 'Invalid or expired authentication token.' });
       }
-      const admin = await Admin.findById(payload.sub).select('name email role isActive').lean();
+      const admin = await Admin.findById(payload.sub).select('name email role isActive tokenVersion').lean();
       if (!admin || !admin.isActive) {
+        return res.status(401).json({ message: 'Invalid or expired authentication token.' });
+      }
+      const version = admin.tokenVersion ?? 0;
+      const suppliedVersion = payload.tokenVersion === undefined ? 0 : payload.tokenVersion;
+      if (!Number.isSafeInteger(version) || version < 0
+        || !Number.isSafeInteger(suppliedVersion) || suppliedVersion !== version) {
         return res.status(401).json({ message: 'Invalid or expired authentication token.' });
       }
       if (admin.role !== requiredRole && admin.role !== 'superadmin') {

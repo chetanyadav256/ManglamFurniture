@@ -1,12 +1,15 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
-import { ArrowLeft, ArrowRight, Eye, EyeOff, FlaskConical, LockKeyhole } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
+import { ArrowLeft, ArrowRight, Eye, EyeOff, LockKeyhole } from 'lucide-react';
 import Brand from '../../components/Brand';
 import usePageTitle from '../../hooks/usePageTitle';
 import { BusyLabel, Field, FormAlert } from '../components/AdminUI';
+import { useAdminAuth } from '../context/AdminAuthContext';
 
 export default function AdminLogin() {
-  usePageTitle('Admin login preview');
+  usePageTitle('Admin login');
+  const { login, passwordChanged } = useAdminAuth();
+  const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [visible, setVisible] = useState(false);
@@ -27,12 +30,19 @@ export default function AdminLogin() {
       return;
     }
     setBusy(true);
-    await new Promise((resolve) => setTimeout(resolve, 250));
-    setPassword('');
-    setBusy(false);
-    setMessage(
-      'Authentication is not connected. No credentials were sent or saved. Use “Open dashboard preview” to explore the UI.',
-    );
+    try {
+      await login(email.trim(), password);
+      setPassword('');
+      navigate('/admin/dashboard', { replace: true });
+    } catch (error) {
+      setPassword('');
+      if (error.status === 401) setMessage('Invalid email or password.');
+      else if (error.status === 403)
+        setMessage('This account is not authorized to access the admin dashboard.');
+      else setMessage(error.message || 'Unable to sign in. Please try again.');
+    } finally {
+      setBusy(false);
+    }
   }
   return (
     <main className="grid min-h-dvh bg-cream lg:grid-cols-2">
@@ -73,22 +83,23 @@ export default function AdminLogin() {
           <p className="eyebrow mb-3 text-bark">Manglam administration</p>
           <h1 className="font-display text-4xl text-walnut sm:text-5xl">Welcome back.</h1>
           <p className="mb-7 mt-3 text-sm leading-7 text-bark">
-            Admin sign-in UI. Real authentication will be connected in the next phase.
+            Sign in securely to manage the Manglam Furniture catalog.
           </p>
           <div className="mb-6 flex items-start gap-3 rounded-lg border border-sand bg-white p-4 text-xs leading-6 text-bark">
-            <FlaskConical size={18} className="mt-1 shrink-0 text-walnut" />
+            <LockKeyhole size={18} className="mt-1 shrink-0 text-walnut" />
             <p>
-              This is a UI preview. Use sample text to test validation, or open the dashboard
-              without entering credentials.
+              Admin access is restricted to authorized accounts. No public registration is
+              available.
             </p>
           </div>
           <form noValidate onSubmit={submit} className="space-y-5" aria-busy={busy}>
+            <FormAlert variant="notice">{passwordChanged && 'Password changed. Please sign in again with your new password.'}</FormAlert>
             <FormAlert>{message}</FormAlert>
             <Field label="Admin email" id="login-email" error={errors.email} required>
               <input
                 id="login-email"
                 type="email"
-                autoComplete="off"
+                autoComplete="username"
                 required
                 value={email}
                 disabled={busy}
@@ -104,7 +115,7 @@ export default function AdminLogin() {
                 <input
                   id="login-password"
                   type={visible ? 'text' : 'password'}
-                  autoComplete="off"
+                  autoComplete="current-password"
                   required
                   value={password}
                   disabled={busy}
@@ -127,18 +138,18 @@ export default function AdminLogin() {
               </div>
             </Field>
             <button type="submit" disabled={busy} className="btn-primary w-full rounded-md">
-              <BusyLabel busy={busy} busyText="Checking form…">
+              <BusyLabel busy={busy} busyText="Signing in…">
                 Login <ArrowRight size={16} />
               </BusyLabel>
             </button>
           </form>
           <div className="mt-7 border-t border-sand pt-6">
-            <Link to="/admin/dashboard" className="btn-outline w-full rounded-md">
-              Open dashboard preview
+            <Link to="/" className="btn-outline w-full rounded-md">
+              Visit the public website
               <ArrowRight size={16} />
             </Link>
             <p className="mt-3 text-center text-[11px] leading-6 text-bark">
-              No authentication · Local mock data · No registration
+              Secure admin access · No public registration
             </p>
           </div>
         </div>

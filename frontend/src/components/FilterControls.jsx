@@ -1,6 +1,6 @@
-import { categories, materials, priceOptions } from '../data/catalog';
+import { categories as sampleCategories, materials, priceOptions } from '../data/catalog';
 
-export default function FilterControls({ filters, onChange, prefix = 'filter' }) {
+export default function FilterControls({ filters, onChange, prefix = 'filter', categories = sampleCategories, isSample = true }) {
   return (
     <div className="space-y-7">
       <fieldset>
@@ -57,7 +57,7 @@ export default function FilterControls({ filters, onChange, prefix = 'filter' })
           ))}
         </select>
         <p className="mt-3 text-[10px] leading-5 text-bark">
-          Prices shown are illustrative sample prices.
+          {isSample ? 'Prices shown are illustrative sample prices.' : 'Contact the showroom to confirm prices and availability.'}
         </p>
       </div>
     </div>

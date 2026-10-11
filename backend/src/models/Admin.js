@@ -12,6 +12,7 @@ const adminSchema = new mongoose.Schema(
       match: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
     },
     passwordHash: { type: String, required: true, select: false },
+    tokenVersion: { type: Number, default: 0, min: 0, validate: Number.isSafeInteger },
     role: { type: String, enum: ['admin', 'superadmin'], default: 'admin', required: true },
     isActive: { type: Boolean, default: true, required: true },
   },

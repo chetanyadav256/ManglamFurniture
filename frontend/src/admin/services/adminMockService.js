@@ -3,7 +3,7 @@ import { products as sampleProducts, categories as sampleCategories } from '../.
 export const normalizeTag = (value) =>
   value.normalize('NFKC').trim().toLowerCase().replace(/\s+/g, ' ');
 export const normalizeName = (value) => value.normalize('NFKC').trim().replace(/\s+/g, ' ');
-export const IMAGE_LIMIT = 8;
+export const IMAGE_LIMIT = 5;
 export const IMAGE_SIZE_LIMIT = 5 * 1024 * 1024;
 export const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 export const formatAdminPrice = (price) =>
@@ -21,7 +21,7 @@ export const formatDate = (value) =>
     timeZone: 'Asia/Kolkata',
   }).format(new Date(value));
 
-export function validateProduct(values, categories) {
+export function validateProduct(values, categories, { requireImages = true } = {}) {
   const errors = {};
   if (!values.name.trim() || values.name.trim().length > 120)
     errors.name = 'Enter a product name of 1–120 characters.';
@@ -47,7 +47,7 @@ export function validateProduct(values, categories) {
       Number(values[key]) > 10000
     )
       errors[key] = 'Use a dimension greater than 0 and no more than 10,000 cm.';
-  if (!values.images.length || values.images.length > IMAGE_LIMIT)
+  if (requireImages && (!values.images.length || values.images.length > IMAGE_LIMIT))
     errors.images = `Add between 1 and ${IMAGE_LIMIT} images.`;
   if (
     values.tags.length > 12 ||
@@ -57,8 +57,8 @@ export function validateProduct(values, categories) {
   return errors;
 }
 
-// This is the single mock boundary. Replace these async methods with Axios API
-// requests later. No credentials, tokens, uploads, or persistent storage are used.
+// Dashboard counts and category/settings preview actions remain local. Product
+// CRUD is handled separately by the authenticated Admin Product API service.
 export function createAdminMockService() {
   const now = Date.now();
   let state = {
@@ -100,52 +100,6 @@ export function createAdminMockService() {
   }
   return {
     getSnapshot: snapshot,
-    async saveProduct(values, id) {
-      await delay();
-      const errors = validateProduct(values, state.categories);
-      if (Object.keys(errors).length) throw new Error(Object.values(errors)[0]);
-      const existing = id ? state.products.find((product) => product.id === id) : null;
-      if (id && !existing) throw new Error('This product no longer exists in the preview.');
-      const saved = {
-        ...existing,
-        id: id || crypto.randomUUID(),
-        name: values.name.trim(),
-        category: values.category,
-        price: Number(values.price),
-        description: values.description.trim(),
-        material: values.material.trim(),
-        color: values.color.trim(),
-        wood:
-          existing?.material === values.material.trim() ? existing.wood : values.material.trim(),
-        dimensionValues: {
-          length: Number(values.length),
-          width: Number(values.width),
-          height: Number(values.height),
-        },
-        // Public catalog uses W × D × H. Form length corresponds to depth.
-        dimensions: `${Number(values.width)} × ${Number(values.length)} × ${Number(values.height)} cm`,
-        images: values.images.map((image) => ({ ...image })),
-        image: values.images[0].src,
-        position: values.images[0].position || 'center',
-        tags: [...new Set(values.tags.map(normalizeTag))],
-        createdAt: existing?.createdAt || new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        featured: existing?.featured || false,
-      };
-      state = {
-        ...state,
-        products: existing
-          ? state.products.map((product) => (product.id === id ? saved : product))
-          : [saved, ...state.products],
-      };
-      return saved;
-    },
-    async deleteProduct(id) {
-      await delay();
-      if (!state.products.some((product) => product.id === id))
-        throw new Error('This product no longer exists.');
-      state = { ...state, products: state.products.filter((product) => product.id !== id) };
-    },
     async saveCategory(name, id) {
       await delay();
       if (id && !state.categories.some((category) => category.id === id))
@@ -200,5 +154,5 @@ export async function readPreviewImage(file) {
   } catch {
     throw new Error(`${file.name}: this file is not a readable image.`);
   }
-  return { id: crypto.randomUUID(), src, label: file.name, zoom: 1, position: 'center' };
+  return { id: crypto.randomUUID(), src, label: file.name, file, zoom: 1, position: 'center' };
 }

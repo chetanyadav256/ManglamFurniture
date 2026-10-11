@@ -9,16 +9,18 @@
   "scripts": {
     "dev": "nodemon src/server.js",
     "start": "node src/server.js",
-    "check": "node --check src/server.js && node --check src/app.js && node --check scripts/createAdmin.js",
-    "test": "node --test tests/adminAuth.test.js tests/publicCatalog.test.js"
+    "check": "node --check src/models/Admin.js && node --check src/middleware/adminAuth.js && node --check src/middleware/loginRateLimit.js && node --check src/middleware/passwordRateLimit.js && node --check src/controllers/adminPasswordController.js && node --check src/server.js && node --check src/app.js && node --check src/config/env.js && node --check src/config/categoryIndexes.js && node --check src/controllers/adminCategoryController.js && node --check src/controllers/adminProductController.js && node --check src/routes/adminRoutes.js && node --check src/routes/adminProductRoutes.js && node --check src/routes/adminCategoryRoutes.js && node --check scripts/createAdmin.js && node --check scripts/setupCategoryIndexes.js && node --check src/config/cloudinary.js && node --check src/services/imageStorage.js && node --check src/services/categoryReferenceTransaction.js && node --check src/middleware/imageUpload.js && node --check src/controllers/adminImageController.js",
+    "test": "node --test tests/adminPassword.test.js tests/adminAuth.test.js tests/adminCrud.test.js tests/categoryConcurrency.test.js tests/publicCatalog.test.js tests/adminImages.test.js tests/imageStorage.test.js tests/deploymentConfig.test.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
+    "cloudinary": "^2.11.0",
     "cors": "^2.8.6",
     "dotenv": "^18.0.7",
     "express": "^5.3.0",
     "jsonwebtoken": "^9.0.3",
-    "mongoose": "^8.24.5"
+    "mongoose": "^8.24.5",
+    "multer": "^2.4.0"
   },
   "devDependencies": {
     "nodemon": "^3.1.14"

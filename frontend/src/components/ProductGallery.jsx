@@ -8,11 +8,11 @@ export default function ProductGallery({ product }) {
     setSelected((index) => (index + direction + product.images.length) % product.images.length);
   }
   return (
-    <div>
+    <div className="min-w-0">
       <div
         className="relative aspect-square overflow-hidden rounded-sm bg-cream sm:aspect-[5/4.8]"
         aria-roledescription="carousel"
-        aria-label={`${product.name} sample images`}
+        aria-label={`${product.name}${product.isSample === false ? '' : ' sample'} images`}
       >
         <img
           src={current.src}
@@ -29,7 +29,7 @@ export default function ProductGallery({ product }) {
           data-testid="main-product-image"
         />
         <span className="absolute left-4 top-4 rounded-sm bg-white/95 px-3 py-2 text-[9px] tracking-wider uppercase">
-          Sample collection
+          {product.isSample === false ? 'Collection' : 'Sample collection'}
         </span>
         <div className="absolute bottom-4 right-4 flex gap-2">
           <button
@@ -75,8 +75,7 @@ export default function ProductGallery({ product }) {
         ))}
       </div>
       <p className="mt-3 text-[10px] leading-6 text-bark" aria-live="polite">
-        {selected + 1} / {product.images.length} · {current.label}. Illustrative photograph;
-        thumbnails include detail crops.
+        {selected + 1} / {product.images.length} · {current.label}.{product.isSample !== false && ' Illustrative photograph; thumbnails include detail crops.'}
       </p>
     </div>
   );

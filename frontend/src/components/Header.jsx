@@ -4,7 +4,7 @@ import { ArrowUpRight, ChevronDown, MapPin, Menu, Search, Store, X } from 'lucid
 import Brand from './Brand';
 import Modal from './Modal';
 import { categories } from '../data/catalog';
-import { navigation } from '../data/site';
+import { business, navigation } from '../data/site';
 
 export default function Header() {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -57,7 +57,7 @@ export default function Header() {
         THOUGHTFUL FURNITURE. BEAUTIFUL EVERYDAY LIVING.
       </div>
       <header className="sticky top-0 z-30 border-b border-sand/70 bg-white/95 backdrop-blur-md">
-        <div className="container-shell flex h-[76px] items-center justify-between gap-2 lg:h-[88px] lg:gap-5">
+        <div className="container-shell flex h-[76px] items-center justify-between gap-2 max-sm:px-[clamp(0.25rem,calc((100vw-19.5rem)/2),1.25rem)] lg:h-[88px] lg:gap-5">
           <Brand />
           <nav aria-label="Main navigation" className="hidden items-center gap-5 lg:flex xl:gap-8">
             {navigation.map(({ label, to }) =>
@@ -120,14 +120,16 @@ export default function Header() {
             )}
           </nav>
           <div className="flex shrink-0 items-center gap-0.5 sm:gap-2">
-            <Link
-              to="/contact"
+            <a
+              href={business.mapsUrl}
+              target="_blank"
+              rel="noopener noreferrer"
               className="nav-action order-2 lg:order-1"
               aria-label="Find our showroom"
             >
               <MapPin size={19} strokeWidth={1.5} aria-hidden="true" />
               <span className="hidden lg:inline">Location</span>
-            </Link>
+            </a>
             <button
               type="button"
               className="nav-action order-1 lg:order-2"
@@ -234,7 +236,7 @@ export default function Header() {
         </div>
         <form onSubmit={submitSearch} role="search">
           <label htmlFor="global-search" className="mb-2 block text-xs text-bark">
-            Search by name, category, or tag
+            Search product names, descriptions, or tags
           </label>
           <div className="flex gap-2">
             <input

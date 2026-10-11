@@ -11,8 +11,11 @@ export default function Breadcrumbs({ items }) {
           </Link>
         </li>
         {items.map((item, index) => (
-          <li key={`${item.label}-${index}`} className="flex items-center gap-2">
-            <ChevronRight size={12} aria-hidden="true" />
+          <li
+            key={`${item.label}-${index}`}
+            className="flex items-center gap-2 max-lg:min-w-0 max-lg:max-w-full max-lg:wrap-anywhere"
+          >
+            <ChevronRight size={12} className="max-lg:shrink-0" aria-hidden="true" />
             {item.to ? (
               <Link to={item.to} className="inline-flex min-h-8 items-center hover:text-walnut">
                 {item.label}

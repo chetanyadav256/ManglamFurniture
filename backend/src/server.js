@@ -8,7 +8,7 @@ try {
   validateJwtConfig();
   await connectDatabase();
   const server = app.listen(env.port, env.host, () => {
-    console.info(`Manglam Furniture API: http://${env.host}:${env.port}`);
+    console.info(`Manglam Furniture API listening on ${env.host}:${env.port}`);
   });
 
   server.on('error', (error) => {

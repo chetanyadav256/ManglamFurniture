@@ -11,7 +11,7 @@ export default function VisitBanner() {
             Some things are better in person.
           </h2>
           <p className="mt-3 text-sm leading-6 text-bark">
-            Find our showroom details and plan a visit when available.
+            Find our showroom details and plan a visit.
           </p>
         </div>
         <Link to="/contact" className="btn-outline shrink-0">

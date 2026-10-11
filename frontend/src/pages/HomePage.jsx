@@ -1,11 +1,15 @@
 import { ArrowUpRight, Armchair, Leaf, Ruler, ScanSearch } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import CategoryCard from '../components/CategoryCard';
 import ProductCard from '../components/ProductCard';
 import SectionHeading from '../components/SectionHeading';
 import VisitBanner from '../components/VisitBanner';
-import { categories, products } from '../data/catalog';
+import { categories } from '../data/catalog';
 import usePageTitle from '../hooks/usePageTitle';
+import { getProducts } from '../services/api';
+
+const productImageFallback = '/images/living-room.webp';
 
 const values = [
   {
@@ -32,6 +36,43 @@ const values = [
 
 export default function HomePage() {
   usePageTitle('Furniture for a beautiful everyday');
+  const [attempt, setAttempt] = useState(0);
+  const [productState, setProductState] = useState({ loading: true, products: [], error: '' });
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setProductState({ loading: true, products: [], error: '' });
+
+    // The backend has no featured flag, so the edit is the four newest active products.
+    getProducts({ sort: 'newest', page: 1, limit: 4 }, { signal: controller.signal })
+      .then(({ products }) => {
+        if (controller.signal.aborted) return;
+        setProductState({
+          loading: false,
+          error: '',
+          products: products.map((product) => ({
+            id: product.id,
+            name: product.name,
+            price: product.price,
+            categoryName: product.category?.name || 'Furniture',
+            image: product.images?.[0]?.url || productImageFallback,
+            isSample: false,
+          })),
+        });
+      })
+      .catch((error) => {
+        if (!controller.signal.aborted) {
+          setProductState({
+            loading: false,
+            products: [],
+            error: error.message || 'Unable to load furniture.',
+          });
+        }
+      });
+
+    return () => controller.abort();
+  }, [attempt]);
+
   return (
     <>
       <section
@@ -110,17 +151,38 @@ export default function HomePage() {
           <SectionHeading
             eyebrow="The Manglam edit"
             title="Pieces to come home to."
-            description="A few favourites from our sample collection. Find a piece that speaks to your space."
+            description="Discover a considered edit from our latest active furniture collection."
             link="View the collection"
             to="/shop"
           />
-          <div className="grid grid-cols-2 gap-x-4 gap-y-8 sm:gap-6 lg:grid-cols-4">
-            {products
-              .filter((product) => product.featured)
-              .map((product) => (
+          {productState.loading ? (
+            <p role="status" className="py-8 text-center text-sm leading-7 text-bark">
+              Loading furniture…
+            </p>
+          ) : productState.error ? (
+            <div
+              role="alert"
+              className="rounded-sm border border-sand bg-cream/50 px-6 py-10 text-center"
+            >
+              <h3 className="font-display text-3xl text-walnut">Unable to load the collection.</h3>
+              <p className="mx-auto mt-3 max-w-sm text-sm leading-7 text-bark">
+                {productState.error}
+              </p>
+              <button className="btn-primary mt-6" onClick={() => setAttempt((value) => value + 1)}>
+                Try again
+              </button>
+            </div>
+          ) : productState.products.length ? (
+            <div className="grid grid-cols-2 gap-x-4 gap-y-8 sm:gap-6 lg:grid-cols-4">
+              {productState.products.map((product) => (
                 <ProductCard key={product.id} product={product} />
               ))}
-          </div>
+            </div>
+          ) : (
+            <p role="status" className="py-8 text-center text-sm leading-7 text-bark">
+              Our furniture collection is taking shape. Please check back soon.
+            </p>
+          )}
         </div>
       </section>
 

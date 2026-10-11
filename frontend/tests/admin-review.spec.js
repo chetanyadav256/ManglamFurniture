@@ -1,4 +1,12 @@
 import { test, expect } from '@playwright/test';
+import { navigateWithinAdmin, signInToAdmin } from './adminAuthFixture';
+import { mockShopApi } from './shopApiFixture';
+import { mockAdminCategoryApi } from './adminCategoryFixture';
+
+test.beforeEach(async ({ page }) => {
+  await mockShopApi(page);
+  await signInToAdmin(page);
+});
 import path from 'node:path';
 
 async function expectBelowHeader(page, locator) {
@@ -17,7 +25,7 @@ async function expectBelowHeader(page, locator) {
 for (const width of [393, 1024]) {
   test(`admin links, route recovery, and scroll position work at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 852 });
-    await page.goto('/admin/dashboard');
+    await navigateWithinAdmin(page, '/admin/dashboard');
     for (const [name, route] of [
       ['Products', 'products'],
       ['Categories', 'categories'],
@@ -42,11 +50,11 @@ for (const width of [393, 1024]) {
     await expect(page).toHaveURL('/admin/products');
     await page.goBack();
     await expect(page).toHaveURL('/admin/products/new');
-    await page.goto('/admin/products/missing-product/edit');
+    await navigateWithinAdmin(page, '/admin/products/missing-product/edit');
     await expect(page.getByRole('heading', { name: 'This piece isn’t here.' })).toBeVisible();
     await page.getByRole('link', { name: 'Back to products', exact: true }).click();
     await expect(page).toHaveURL('/admin/products');
-    await page.goto('/admin/missing-page');
+    await navigateWithinAdmin(page, '/admin/missing-page');
     await page.getByRole('link', { name: 'Back to overview', exact: true }).click();
     await expect(page).toHaveURL('/admin/dashboard');
   });
@@ -55,7 +63,8 @@ for (const width of [393, 1024]) {
 test('renaming a populated category preserves its products and deletion protection', async ({
   page,
 }) => {
-  await page.goto('/admin/categories');
+  await mockAdminCategoryApi(page);
+  await navigateWithinAdmin(page, '/admin/categories');
   await page.getByRole('button', { name: 'Edit category Chairs', exact: true }).click();
   await page.getByLabel('Category name').fill('  beds ');
   await page.getByRole('button', { name: 'Save category', exact: true }).click();
@@ -63,7 +72,7 @@ test('renaming a populated category preserves its products and deletion protecti
   await page.getByLabel('Category name').fill('Accent Seating');
   await page.getByRole('button', { name: 'Save category', exact: true }).click();
   const category = page.getByTestId('admin-category-card').filter({ hasText: 'Accent Seating' });
-  await expect(category).toContainText('2 products');
+  await expect(category).toContainText('2 active products');
   await category.getByRole('link', { name: 'View products', exact: true }).click();
   await expect(page.getByTestId('admin-product-row')).toHaveCount(2);
   for (const row of await page.getByTestId('admin-product-row').all())
@@ -75,16 +84,16 @@ test('renaming a populated category preserves its products and deletion protecti
   await category
     .getByRole('button', { name: 'Delete category Accent Seating', exact: true })
     .click();
-  await expect(
-    page.getByRole('dialog').getByRole('button', { name: 'Delete category', exact: true }),
-  ).toBeDisabled();
+  const dialog = page.getByRole('dialog', { name: 'This category has products.' });
+  await expect(dialog).toContainText('active products');
+  await expect(dialog.getByRole('button', { name: 'Delete category', exact: true })).toBeDisabled();
 });
 
-test('mobile image previews accept all supported types and promote the next main image on removal', async ({
+test('mobile image picker previews supported files, tracks a preferred main image, and removes selections', async ({
   page,
 }) => {
   await page.setViewportSize({ width: 393, height: 852 });
-  await page.goto('/admin/products/new');
+  await navigateWithinAdmin(page, '/admin/products/new');
   const fixtures = await page.evaluate(() => {
     const canvas = document.createElement('canvas');
     canvas.width = canvas.height = 8;
@@ -99,26 +108,17 @@ test('mobile image previews accept all supported types and promote the next main
   await expect(page.getByRole('img', { name: /Product preview/ })).toHaveCount(2);
   await upload.setInputFiles(path.resolve('public/images/chair.webp'));
   await expect(page.getByRole('img', { name: /Product preview/ })).toHaveCount(3);
-  const first = await page.getByRole('img', { name: /^Product preview 1/ }).getAttribute('src');
-  const third = await page.getByRole('img', { name: /^Product preview 3/ }).getAttribute('src');
   await page.getByRole('button', { name: 'Set image 3 as main', exact: true }).click();
-  await expect(page.getByRole('img', { name: /^Product preview 1/ })).toHaveAttribute('src', third);
+  await expect(page.getByRole('button', { name: 'Image 3 is main image' })).toBeVisible();
   await page.getByRole('button', { name: 'Remove image 1', exact: true }).click();
-  await expect(page.getByRole('img', { name: /^Product preview 1/ })).toHaveAttribute('src', first);
-  await expect(
-    page.getByRole('button', { name: 'Image 1 is main image', exact: true }),
-  ).toBeVisible();
-  await page.getByRole('button', { name: 'Remove image 2', exact: true }).click();
-  await page.getByRole('button', { name: 'Remove image 1', exact: true }).click();
-  await expect(page.getByRole('img', { name: /Product preview/ })).toHaveCount(0);
-  await page.getByRole('button', { name: 'Save product', exact: true }).click();
-  await expect(
-    page.getByRole('alert').filter({ hasText: 'Add between 1 and 8 images' }),
-  ).toBeVisible();
+  await expect(page.getByRole('img', { name: /Product preview/ })).toHaveCount(2);
+  await expect(page.getByRole('button', { name: 'Choose product images' })).toContainText(
+    '2/5 images',
+  );
 });
 
 test('Unicode tag normalization, duplicate prevention, and tag limits work', async ({ page }) => {
-  await page.goto('/admin/products/new');
+  await navigateWithinAdmin(page, '/admin/products/new');
   const input = page.getByLabel('Product tags');
   await input.fill('  ＷＯＯＤＥＮ\u00a0  CHAIR  ');
   await input.press('Enter');
@@ -150,8 +150,8 @@ for (const width of [360, 393]) {
   }, testInfo) => {
     await page.setViewportSize({ width, height: 400 });
     await page.emulateMedia({ reducedMotion: 'reduce' });
-    await page.goto('/admin/settings');
-    const submit = page.getByRole('button', { name: 'Preview password change' });
+    await navigateWithinAdmin(page, '/admin/settings');
+    const submit = page.getByRole('button', { name: 'Change password' });
     await submit.click();
     const alert = page.getByRole('alert');
     await expect(alert).toContainText('Complete all three password fields');
@@ -162,12 +162,11 @@ for (const width of [360, 393]) {
     await page.locator('#settings-password-current').fill('sample-current');
     await page.locator('#settings-password-next').fill('sample-new-password');
     await page.locator('#settings-password-confirm').fill('sample-new-password');
+    await page.route('**/api/admin/me/password', (route) => route.fulfill({ status: 400, json: { message: 'Current password is incorrect.' } }));
     await submit.click();
-    const status = page.getByRole('status').filter({ hasText: 'Password updates' });
+    const status = page.getByRole('alert').filter({ hasText: 'Current password is incorrect.' });
     await expectBelowHeader(page, status);
-    await page.getByRole('button', { name: 'Save preview profile' }).click();
-    await expect(alert).toContainText('valid preview email');
-    await expectBelowHeader(page, alert);
+    await expect(page.getByRole('button', { name: 'Save profile', exact: true })).toBeEnabled();
     await page.screenshot({ path: testInfo.outputPath(`settings-feedback-${width}.png`) });
   });
 }

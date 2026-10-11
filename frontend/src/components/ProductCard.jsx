@@ -31,14 +31,14 @@ export default function ProductCard({ product }) {
         </div>
         <div className="pb-1 pt-4">
           <p className="text-[9px] tracking-[0.12em] text-bark uppercase sm:text-[10px]">
-            {getCategory(product.category).name}
+            {product.categoryName ?? getCategory(product.category)?.name ?? 'Furniture'}
           </p>
           <h3 className="mt-1.5 font-display text-xl leading-tight text-walnut sm:text-2xl">
             {product.name}
           </h3>
           <p className="mt-2 text-xs font-medium sm:text-sm" data-testid="product-price">
             {formatPrice(product.price)}
-            <span className="ml-1.5 text-[9px] font-normal text-bark">sample price</span>
+            {product.isSample !== false && <span className="ml-1.5 text-[9px] font-normal text-bark">sample price</span>}
           </p>
         </div>
       </Link>

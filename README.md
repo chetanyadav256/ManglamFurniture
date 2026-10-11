@@ -1,81 +1,36 @@
 # Manglam Furniture
 
-A responsive furniture showroom catalog built with React (JavaScript), Vite, and Tailwind CSS, with an Express/Mongoose backend foundation.
+A responsive furniture showroom catalog built with React, Vite, and Tailwind CSS, backed by an Express/Mongoose API and MongoDB.
 
 ## Current implementation
 
-The complete customer-facing UI uses a local sample catalog. It includes:
+The customer-facing Home, Shop, Search, and Product Details pages load products and categories from the public API. Shop filters/search use the API, and product detail routes use MongoDB product IDs. About and Contact provide business information and navigation.
 
-- Home with a photographic hero, category cards, featured pieces, brand introduction, and design values.
-- Shop with seven categories, name/category/tag search, category/material/price filters, sorting, and empty states.
-- Product details with a main photo, selectable image crops, specifications, searchable tags, related products, and an enquiry link.
-- About with a brand introduction, design perspective, and a configurable business-story placeholder.
-- Contact with configurable address, phone, hours, email, and Google Maps link. Missing details are clearly labelled; the map button remains disabled until configured.
-- Search results sharing the shop's filtering and sorting components.
-- A 404 page for missing pages and unknown products.
-- Desktop category dropdown, mobile navigation, search dialog, mobile filter drawer, and shared footer.
+The admin dashboard is connected to protected backend APIs for login, profile/password management, product and category management, and Cloudinary image management. Its dashboard counts are derived from public catalog API reads; there is no separate statistics endpoint.
 
-This is a **catalog**, not an online purchasing system. There are no carts, wishlists, checkout, payments, quantity selectors, or customer accounts. The admin dashboard now supports product and category CRUD in a clearly labelled, in-memory UI preview. Real admin authentication and API persistence are not implemented. JWT and bcryptjs remain installed in the backend for that later milestone.
+This is a **catalog**, not an online purchasing system. It has no cart, checkout, payment processing, or customer accounts. Product copy, prices, and catalog photography remain illustrative. The verified business contact details are centralized in `frontend/src/data/site.js`; email and opening hours are intentionally omitted because they have not been provided.
 
-All product names, specifications, prices, and photographs are illustrative. No actual address, telephone number, business history, store hours, or showroom location has been invented. The existing MVC backend architecture is unchanged.
+Product images are limited to five per product. The first image in the ordered image array is the main image. Category deletion is rejected if any product references that category, whether active or inactive. Product creation, category reassignment, and category deletion coordinate through MongoDB transactions and a write to the category record. Use a transaction-capable MongoDB deployment (such as an Atlas replica set or sharded cluster); these operations do not fall back to non-transactional writes.
 
-## Admin dashboard preview
+## Admin dashboard
 
-Open <http://127.0.0.1:5173/admin/login> and select **Open dashboard preview**. No credentials are needed. Admin routes are intentionally unprotected in this UI-only phase; the login form demonstrates validation and does not authenticate anyone.
+Open <http://127.0.0.1:5173/admin/login> and sign in using an admin account provisioned by the backend CLI. Admin routes require an authenticated, active admin account; the browser keeps authentication in memory and does not persist tokens in local or session storage.
 
-| URL | Purpose |
-| --- | --- |
-| `/admin` | Redirect to login preview |
-| `/admin/login` | Login form, show/hide password, and explicit preview entry |
-| `/admin/dashboard` | Product/category totals, recently added pieces, category distribution |
-| `/admin/products` | Search, category filter, sorting, pagination, edit and delete |
-| `/admin/products/new` | Add product with validation, images, and tags |
-| `/admin/products/:id/edit` | Edit the same fields using the reusable product form |
-| `/admin/categories` | Add, rename, count, and safely delete categories |
-| `/admin/settings` | Preview profile, password form validation, and exit preview |
+| URL                        | Purpose                                                                       |
+| -------------------------- | ----------------------------------------------------------------------------- |
+| `/admin/login`             | Admin sign-in                                                                 |
+| `/admin/dashboard`         | Active product count, per-category active product counts, and recent products |
+| `/admin/products`          | Search, filter, sort, edit, deactivate, and manage product images             |
+| `/admin/products/new`      | Create a product and its catalog details                                      |
+| `/admin/products/:id/edit` | Edit a product                                                                |
+| `/admin/categories`        | Create, rename, count, and delete categories                                  |
+| `/admin/settings`          | Update the signed-in admin display name or password                           |
 
-The admin area uses its own desktop sidebar, mobile drawer, top navigation, profile dropdown, and page layout. Public page components, sample data, and designs are preserved. The admin routes are lazy-loaded through `App.jsx`.
-
-**Product forms:** name, category, INR price (up to two decimals), description, material, color, and length/width/height in centimetres are required. Select 1–8 JPEG, PNG, or WebP images, up to 5 MB each. Unreadable images are rejected. Preview, remove, or choose the main image; choosing a main image moves it to the first gallery position. Tags are optional, limited to 12 of up to 40 characters, and normalised with Unicode NFKC, lowercase, trimmed/collapsed whitespace, and duplicate prevention. Add with Enter or the Add button.
-
-**Catalog management:** search matches product names, category names, and tags. Combine search with a category filter, sort by date/name/price, and page through eight products at a time. Desktop tables become mobile cards. Product deletion requires confirmation. Category names cannot duplicate existing names regardless of casing or extra whitespace. Renaming preserves product assignments; a category containing products cannot be deleted until its products are reassigned or removed.
-
-**Preview limitations:** the mock service copies the existing sample catalog into React context. Changes survive navigation within `/admin`, including exiting to the login preview, but reset on refresh, closing the tab, or leaving the admin area for the public website. Public products never change from preview edits. Images stay in browser memory; nothing is uploaded. Dates are simulated for the sample products and labelled as such in the overview. No localStorage, sessionStorage, credentials, tokens, or API calls are used. Profile changes affect only the preview; password submission clears its inputs and explicitly reports that real credentials were not changed.
-
-The shared service boundary is `frontend/src/admin/services/adminMockService.js`. A later phase can replace its asynchronous methods with Axios calls, add Express/MongoDB persistence, real image storage, and server-backed admin authentication. None of those integrations is included in Step 3.
-
-Admin implementation files (under `frontend/src/admin/`):
-
-```text
-AdminRoutes.jsx
-context/AdminPreviewContext.jsx
-layout/AdminLayout.jsx
-components/AdminHeader.jsx
-components/AdminSidebar.jsx
-components/AdminUI.jsx
-components/ConfirmDialog.jsx
-components/ImagePicker.jsx
-components/ProductForm.jsx
-components/ProductTable.jsx
-components/StatsCard.jsx
-components/TagInput.jsx
-pages/AdminLogin.jsx
-pages/AdminDashboard.jsx
-pages/ManageProducts.jsx
-pages/AddProduct.jsx
-pages/EditProduct.jsx
-pages/ManageCategories.jsx
-pages/AdminSettings.jsx
-services/adminMockService.js
-```
-
-Other Step 3 files: `frontend/src/App.jsx` (admin route registration), `frontend/tests/admin.spec.js` (admin interaction/responsive tests), and this README. Existing admin work was continued in place; no application dependencies or backend changes were needed.
-
-To try the workflow, add a product with sample details and two local images, select its main image, add tags, and save. Find it by a tag, edit it, then test Cancel and Delete in its confirmation dialog. Add a category, assign a product to it, and verify that deletion is blocked until it is empty. Settings can be tested with a sample name/email and sample password text. Refresh to restore the original data.
+Image uploads accept JPEG, PNG, and WebP, up to 5 MiB each, with no more than five images in total for a product. Admins can reorder the main image or remove images. Product deactivation is a soft delete; it removes the product from public catalog results. Category deletion remains blocked by references from active and inactive products.
 
 ## Run on Windows
 
-Open two PowerShell terminals in VS Code. The frontend works independently of the backend while it uses sample data.
+Open two PowerShell terminals in VS Code. The catalog and admin dashboard require the backend and a configured MongoDB database.
 
 **Frontend**
 
@@ -86,7 +41,7 @@ npm.cmd run dev
 
 Open <http://127.0.0.1:5173>.
 
-**Backend (optional for the sample UI)**
+**Backend**
 
 ```powershell
 Set-Location 'C:\Users\oeguf\OneDrive\Desktop\ManglamFurniture\backend'
@@ -97,91 +52,31 @@ Health endpoint: <http://127.0.0.1:5000/api/health>.
 
 Stop either server with **Ctrl+C**. On a fresh checkout, run `npm.cmd ci` inside each application folder first. `npm.cmd` avoids PowerShell execution-policy issues with `npm.ps1`.
 
-Both applications have useful local defaults without `.env` files. To customise them, run `Copy-Item .env.example .env` inside each application folder **once**. Do not overwrite an existing `.env` containing your settings.
+Copy each `.env.example` to `.env` once and set the required private values before starting the backend. Do not overwrite an existing `.env`. `MONGODB_URI` and a sufficiently strong `JWT_SECRET` are required by the backend; Cloudinary variables are required for image management. In local development the API client defaults to `http://127.0.0.1:5000`; `VITE_API_BASE_URL` can override that base URL.
 
 ## Routes
 
-| URL | Purpose |
-| --- | --- |
-| `/` | Home |
-| `/shop` | Complete collection |
-| `/shop?category=sofas` | Category collection |
-| `/search?q=oak` | Name, category, and tag search |
-| `/products/olive-lounge-sofa` | Example product details |
-| `/about` | Brand introduction and story |
-| `/contact` | Showroom/contact details |
-| `/contact?product=olive-lounge-sofa` | Contact page preserving product context |
-| Any unknown route | 404 with recovery links |
+| URL                                  | Purpose                                         |
+| ------------------------------------ | ----------------------------------------------- |
+| `/`                                  | Home                                            |
+| `/shop`                              | Complete collection                             |
+| `/shop?category=sofas`               | Category collection                             |
+| `/search?q=oak`                      | Name, category, and tag search                  |
+| `/products/:id`                      | Product details, using the product's MongoDB ID |
+| `/about`                             | Brand introduction and story                    |
+| `/contact`                           | Showroom/contact details                        |
+| `/contact?product=olive-lounge-sofa` | Contact page preserving product context         |
+| Any unknown route                    | 404 with recovery links                         |
 
-Search/filter state lives in URL parameters (`q`, `category`, `material`, `price`, `sort`) so refresh, browser history, and shared links preserve the selection. Search ignores casing and extra whitespace and matches all entered words against the product name, category name, and tags. Price ranges use the numeric sample price in INR. Filtering and sorting are entirely local at this stage.
+Search/filter state lives in URL parameters (`q`, `category`, `material`, `price`, `sort`) so refresh, browser history, and shared links preserve the selection. Product/category data comes from the API; text search, category and price constraints are sent to the API, with the current material and name-sort controls applied in the frontend.
 
 ## Files and customisation
 
-```text
-ManglamFurniture/
-├── frontend/
-│   ├── public/
-│   │   ├── images/                  # Local sample photography + source identifiers
-│   │   ├── fonts/                   # Local fonts + license files
-│   │   └── favicon.svg
-│   ├── src/
-│   │   ├── components/
-│   │   │   ├── Brand.jsx
-│   │   │   ├── Header.jsx           # Desktop/mobile navigation and search dialog
-│   │   │   ├── Footer.jsx
-│   │   │   ├── Modal.jsx            # Focus containment, Escape, and scroll lock
-│   │   │   ├── Breadcrumbs.jsx
-│   │   │   ├── CategoryCard.jsx
-│   │   │   ├── ProductCard.jsx
-│   │   │   ├── ProductGallery.jsx
-│   │   │   ├── FilterControls.jsx
-│   │   │   ├── SectionHeading.jsx
-│   │   │   └── VisitBanner.jsx
-│   │   ├── data/
-│   │   │   ├── catalog.js           # Products, categories, filters, price formatting
-│   │   │   └── site.js              # Verified business details and navigation
-│   │   ├── hooks/usePageTitle.js
-│   │   ├── layouts/SiteLayout.jsx   # Shared page shell and route scroll behaviour
-│   │   ├── pages/
-│   │   │   ├── HomePage.jsx
-│   │   │   ├── CollectionPage.jsx   # Shared Shop and Search Results page
-│   │   │   ├── ProductDetailsPage.jsx
-│   │   │   ├── AboutPage.jsx
-│   │   │   ├── ContactPage.jsx
-│   │   │   └── NotFoundPage.jsx
-│   │   ├── services/api.js          # Axios client, reserved for future API integration
-│   │   ├── App.jsx                  # Page routes
-│   │   ├── main.jsx                 # React entry
-│   │   └── index.css                # Tailwind theme and shared styles
-│   ├── tests/catalog.spec.js        # Browser interaction and responsive checks
-│   ├── playwright.config.js
-│   ├── vite.config.js
-│   ├── .prettierrc.json
-│   ├── .env.example
-│   ├── .gitignore
-│   ├── index.html
-│   ├── package.json
-│   └── package-lock.json
-├── backend/
-│   ├── src/
-│   │   ├── config/                 # Environment and optional database connection
-│   │   ├── controllers/            # Health controller
-│   │   ├── routes/                 # Health routes
-│   │   ├── models/                 # Reserved for future models
-│   │   ├── middleware/             # JSON 404 and error handling
-│   │   ├── app.js
-│   │   └── server.js
-│   ├── .env.example
-│   ├── .gitignore
-│   ├── package.json
-│   └── package-lock.json
-├── .gitignore
-└── README.md
-```
+The frontend API client is `frontend/src/services/api.js`; admin API and state integration lives under `frontend/src/admin/`. The Express API, models, middleware, and services are under `backend/src/`. Detailed route references are in [backend/PUBLIC_API.md](backend/PUBLIC_API.md) and [backend/IMAGE_API.md](backend/IMAGE_API.md).
 
-**Business details:** edit `frontend/src/data/site.js`. Replace `null` values with verified text. `openingHours` and `story` support newline-separated text. Set `mapsUrl` to the verified Google Maps location URL to enable directions. A configured phone enables `tel:` links; a configured email enables `mailto:`. The header, footer, About, and Contact pages share this configuration.
+**Business details:** `frontend/src/data/site.js` is the shared source for the confirmed address, both telephone links, Google Maps location, and Instagram profile. Email and opening hours are unset and omitted from the UI; do not invent them.
 
-**Products:** edit `frontend/src/data/catalog.js`. Each product has a stable ID, category, price, material, colour, dimensions, tags, and images. The current gallery explicitly labels detail/texture crops of the original photo. When real photographs are available, replace each gallery entry with its own image URL, descriptive label, and `zoom: 1`.
+**Products:** product records are stored in MongoDB and served by the backend API. `frontend/src/data/catalog.js` also contains local presentation data, such as category artwork and sample content used by preview/fallback components; it is not the live catalog source. The API stores product category, price, material, color, dimensions, tags, and ordered images.
 
 **Brand theme:** `frontend/src/index.css` defines dark wood `#593B2B`, warm brown `#C68A57`, cream `#F7F2EB`, and white. Typography uses self-hosted Cormorant Garamond and DM Sans. Tailwind runs through `@tailwindcss/vite` with CSS-first theme configuration.
 
@@ -204,62 +99,50 @@ ManglamFurniture/
 From `frontend/`:
 
 ```powershell
-npm.cmd run build
+npm.cmd run test:unit
 npm.cmd run test:ui
-npm.cmd run format
+npm.cmd run build
 ```
 
-Playwright's Chromium browser must be available. On a fresh machine, install it once:
+Playwright's Chromium browser must be available for browser tests. On a fresh machine, install it once:
 
 ```powershell
 npx.cmd playwright install chromium
 ```
 
-The test runner starts Vite automatically or reuses a running development server. It checks search (including tag-only searches directly on Shop), category/material/price filtering, sorting, history, empty states, gallery selection, related-product navigation, enquiry context, mobile menus, focus containment, breakpoint transitions, and contact placeholders. It also visits every page at **360px, 390px, 768px, 1024px, and 1440px**, checking overflow, overlapping header controls, navigation visibility, image loading, browser errors, and the absence of purchasing controls. Screenshots and any failure traces are saved under ignored `frontend/test-results/`.
-
-Admin tests additionally cover login/profile/password preview validation, absence of credential persistence or API calls, product add/edit/delete, image type/size/decode/count validation, main-image selection, tag normalisation, category reassignment and deletion protection, pagination, mobile CRUD, and keyboard navigation. All seven admin pages are checked at **360px, 393px, 768px, 1024px, and 1440px**. Public tests also retain the earlier 390px coverage. Run the admin checks with `npm.cmd run test:ui -- tests/admin.spec.js tests/admin-review.spec.js`.
-
-The pre-backend review fixed Settings feedback that could appear above the visible area after submitting a long form on a short mobile viewport. Error/status feedback now receives focus and scrolls into view, including repeated identical validation errors. The sticky admin header uses an opaque background. New regression coverage in `frontend/tests/admin-review.spec.js` tests 400px-high viewports at 360px/393px, all sidebar links, route recovery, populated-category renaming, PNG/JPEG/WebP previews, main-image removal, Unicode tag normalization, and tag limits. Only admin components and tests/documentation changed; public source files, assets, and backend files were checked against their pre-review hashes.
-
-Verification uses Chromium and viewport emulation, with screenshots for visual review. Physical-device file pickers and other browsers still need testing. The existing frontend development server is reused and left running; the project structure and backend are preserved.
-
-Latest pre-backend review: **production build passed; all 34 Chromium tests passed (18 admin and 16 public)**. Admin layouts passed at 360px, 393px, 768px, 1024px, and 1440px without horizontal page overflow, overlapping header controls, broken images, or browser console/runtime errors. The Settings short-viewport regression initially failed at both phone widths and passed after the feedback visibility fix. All requested mock UI features passed; no unresolved test/build failures remain. Public/backend preservation checks found zero changes across 56 recorded files. Real authentication, database/API persistence, durable uploads, and real account changes remain intentionally unimplemented.
+The frontend unit tests validate API URL resolution and admin API adapters. Playwright tests exercise public and admin flows, including API behavior and responsive layouts.
 
 From `backend/`:
 
 ```powershell
+npm.cmd test
 npm.cmd run check
 ```
 
-With the backend running:
+Backend tests use mocks or isolated test data; they do not change real MongoDB records or upload/delete Cloudinary assets. Transaction tests simulate MongoDB conflict behavior and do not replace verification against the configured transaction-capable database.
+
+## Backend setup and deployment
+
+The backend requires `MONGODB_URI`, `JWT_SECRET`, and `JWT_EXPIRES_IN` in its private `.env`. Set Cloudinary's `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, and `CLOUDINARY_API_SECRET` to enable image management. See `backend/.env.example` for variable names and placeholders. Never put backend secrets in frontend environment variables or commit a real `.env`.
+
+Before creating the initial admin, review the target database and run these separate, controlled setup steps from `backend/`:
 
 ```powershell
-Invoke-RestMethod http://127.0.0.1:5000/api/health
-Invoke-RestMethod http://127.0.0.1:5173/api/health
+node scripts/createAdmin.js --create-index
+node scripts/setupCategoryIndexes.js
+node scripts/createAdmin.js
 ```
 
-`npm.cmd start` runs the backend without nodemon. `npm.cmd run preview` in the frontend serves the built UI on port 4173. Production hosting must support SPA fallback to `index.html`. Vite's local API proxy is not bundled into the static build; future deployment needs an API reverse proxy or a configured public `VITE_API_BASE_URL` and corresponding backend CORS origin.
+The first command creates the admin email unique index; the second creates category name/slug unique indexes. The last command prompts for the account details and accepts its password through hidden interactive input. These are manual operations and never run at server startup.
 
-## Backend environment
+Category-reference transactions require MongoDB transaction support. Product creation, category reassignment, and category deletion rely on those transactions to preserve the no-dangling-reference rule. Use a transaction-capable MongoDB deployment; standalone MongoDB is not suitable.
 
-Setup was verified on **Node.js v20.15.0 / npm 10.8.2**. Vite 6, React's Vite plugin 4, and Mongoose 8 retain compatibility with that Node version. Lockfiles record exact installed versions.
+Render and Vercel configuration is prepared but **the application is not deployed**. Follow [backend/RENDER_DEPLOYMENT.md](backend/RENDER_DEPLOYMENT.md) and [frontend/VERCEL_DEPLOYMENT.md](frontend/VERCEL_DEPLOYMENT.md). Render uses root `backend`, `npm ci`, `npm start`, and health path `/api/health`; the server uses the platform `PORT`, binds to `0.0.0.0` in production, and requires an explicit `CLIENT_ORIGIN` allowlist. Vercel uses root `frontend`, Vite, `npm ci`, `npm run build`, output `dist`, and the SPA rewrite in `frontend/vercel.json`. Production still requires setting private backend environment variables, exact frontend CORS origin(s), the frontend `VITE_API_BASE_URL`, and MongoDB/Cloudinary access as applicable.
 
-MongoDB is optional for the current health-only backend. With `MONGODB_URI` empty, health reports:
-
-```json
-{
-  "status": "ok",
-  "service": "Manglam Furniture API",
-  "database": "not_configured"
-}
-```
-
-To enable a database connection later, start MongoDB and set `MONGODB_URI=mongodb://127.0.0.1:27017/manglam_furniture` in `backend/.env`, then restart the server. A configured but unreachable database prevents startup. Actual database connectivity and admin authentication have not been implemented/verified as part of the frontend milestone.
-
-`JWT_SECRET` stays blank until authentication is implemented. Keep private values in backend `.env` only; frontend `VITE_*` variables are public browser configuration. Both applications bind to loopback. Changing ports also requires updating the Vite proxy and backend `CLIENT_ORIGIN` as appropriate.
+`GET /api/health` returns HTTP 200 with a database status field; it is a liveness endpoint, not proof that all database operations or external integrations are ready.
 
 ## Dependency notes
 
 The frontend install reports zero known vulnerabilities. The backend's earlier production audit (`npm audit --omit=dev`) also reported zero. Its full audit reported three development-only entries in the `nodemon → chokidar → braces` chain; npm's proposed obsolete nodemon downgrade was not applied. Recheck with `npm.cmd audit` before future backend work.
 
-The frontend UI milestone added only development tools (`@playwright/test` and `prettier`), not a new application framework or backend service. Ask for approval before major architectural changes.
+Lockfiles are committed for reproducible installs. Review current audit output before deployment; historical audit results are not a guarantee about present dependency advisories.

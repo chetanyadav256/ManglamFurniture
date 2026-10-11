@@ -24,7 +24,7 @@ export default function CategoryCard({ category, compact = false }) {
         className={`mt-3 flex min-h-8 items-center gap-2 ${compact ? 'justify-center text-center' : 'justify-between'}`}
       >
         <h3
-          className={`leading-tight text-walnut ${compact ? 'text-[10px] sm:text-xs' : 'font-display text-xl sm:text-2xl'}`}
+          className={`leading-tight text-walnut max-lg:min-w-0 max-lg:wrap-anywhere ${compact ? 'text-[10px] sm:text-xs' : 'font-display text-xl sm:text-2xl'}`}
         >
           {category.name}
         </h3>

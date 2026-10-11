@@ -11,6 +11,7 @@ const testSecret = 'local-test-only-secret-7c9f!A2bD4eG6hJ8';
 const password = 'correct-test-password';
 const passwordHash = bcrypt.hashSync(password, 4);
 let admin, server, base;
+let writes, writeFailure, unavailableAtWrite;
 
 function queryForAdmin(getAdmin) {
   return {
@@ -27,12 +28,26 @@ before(async () => {
   env.jwtExpiresIn = '1h';
   mock.method(Admin, 'findOne', () => queryForAdmin(() => admin));
   mock.method(Admin, 'findById', () => queryForAdmin(() => admin));
+  mock.method(Admin, 'findOneAndUpdate', (filter, update, options) => queryForAdmin(() => {
+    assert.deepEqual(filter, { _id: adminId, isActive: true, role: { $in: ['admin', 'superadmin'] } });
+    assert.deepEqual(Object.keys(update), ['$set']);
+    assert.deepEqual(Object.keys(update.$set), ['name']);
+    assert.deepEqual(options, { new: true, runValidators: true });
+    if (writeFailure) throw new Error('Private database failure');
+    if (unavailableAtWrite) return null;
+    writes++;
+    admin.name = update.$set.name;
+    return admin;
+  }));
   server = app.listen(0, '127.0.0.1');
   await new Promise((resolve) => server.once('listening', resolve));
   base = `http://127.0.0.1:${server.address().port}/api`;
 });
 
 beforeEach(() => {
+  writes = 0;
+  writeFailure = false;
+  unavailableAtWrite = false;
   admin = {
     _id: adminId,
     name: 'Furniture Admin',
@@ -147,4 +162,47 @@ test('An authenticated account without the required admin role is forbidden', as
 test('No public registration endpoint exists and public health remains accessible', async () => {
   assert.equal((await request('/admin/register', { method: 'POST', body: {} })).status, 404);
   assert.equal((await request('/health')).status, 200);
+});
+
+test('Name updates persist, trim whitespace and return only the safe profile', async () => {
+  const original = { ...admin };
+  const result = await request('/admin/me', { method: 'PATCH', token: tokenFor(), body: { name: '  New Display Name  ' } });
+  assert.equal(result.status, 200);
+  assert.deepEqual(result.body, { admin: { id: adminId, name: 'New Display Name', email: original.email, role: original.role } });
+  assert.deepEqual(admin, { ...original, name: 'New Display Name' });
+  assert.deepEqual((await request('/admin/me', { token: tokenFor() })).body, result.body);
+  assert.equal(writes, 1);
+  assert.equal((await request('/admin/me', { method: 'PATCH', token: tokenFor(), body: { name: 'a'.repeat(80) } })).status, 200);
+});
+
+test('Name updates reject invalid names, unexpected fields and query parameters without writing', async () => {
+  const bodies = [{}, [], { name: null }, { name: 42 }, { name: '' }, { name: '  ' }, { name: 'a'.repeat(81) }];
+  for (const key of ['email', 'role', 'password', 'passwordHash', 'isActive', '_id', 'id', 'other']) bodies.push({ name: 'Changed', [key]: 'untrusted' });
+  for (const body of bodies) assert.equal((await request('/admin/me', { method: 'PATCH', token: tokenFor(), body })).status, 400);
+  assert.equal((await request('/admin/me?name=Other', { method: 'PATCH', token: tokenFor(), body: { name: 'Changed' } })).status, 400);
+  assert.equal(writes, 0);
+});
+
+test('Name updates reject missing, invalid, expired, inactive and unauthorized accounts', async () => {
+  const update = { method: 'PATCH', body: { name: 'Changed' } };
+  for (const token of [undefined, 'invalid', tokenFor({}, { expiresIn: -1 })]) assert.equal((await request('/admin/me', { ...update, token })).status, 401);
+  admin.isActive = false;
+  assert.equal((await request('/admin/me', { ...update, token: tokenFor() })).status, 401);
+  admin.isActive = true;
+  admin.role = 'editor';
+  assert.equal((await request('/admin/me', { ...update, token: tokenFor() })).status, 403);
+  assert.equal(writes, 0);
+});
+
+test('Name updates safely handle database failures and accounts unavailable at write time', async () => {
+  const update = { method: 'PATCH', token: tokenFor(), body: { name: 'Changed' } };
+  writeFailure = true;
+  const failed = await request('/admin/me', update);
+  assert.equal(failed.status, 500);
+  assert.equal(JSON.stringify(failed.body).includes('Private database failure'), false);
+  writeFailure = false;
+  unavailableAtWrite = true;
+  assert.equal((await request('/admin/me', update)).status, 401);
+  assert.equal(writes, 0);
+  assert.equal(admin.name, 'Furniture Admin');
 });

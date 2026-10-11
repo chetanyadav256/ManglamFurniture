@@ -1,4 +1,9 @@
 import { test, expect } from '@playwright/test';
+import { mockShopApi } from './shopApiFixture';
+
+test.beforeEach(async ({ page }) => {
+  await mockShopApi(page);
+});
 
 test('desktop category navigation, filtering, and history work', async ({ page }) => {
   await page.goto('/');
@@ -18,17 +23,21 @@ test('desktop category navigation, filtering, and history work', async ({ page }
   await expect(page.getByTestId('product-card')).toHaveCount(2);
 });
 
-test('search finds names, categories, and tags, with recoverable empty state', async ({ page }) => {
+test('search finds backend name, description, or tag matches, with recoverable empty state', async ({
+  page,
+}) => {
   await page.goto('/');
   await page.getByRole('button', { name: 'Search furniture', exact: true }).click();
-  await page.getByLabel('Search by name, category, or tag', { exact: true }).fill('oak');
+  await page.getByLabel('Search product names, descriptions, or tags', { exact: true }).fill('oak');
   await page.getByRole('button', { name: 'Submit search', exact: true }).click();
   await expect(page).toHaveURL(/search\?q=oak/);
   await expect(page.getByTestId('product-card')).toHaveCount(3);
   await page.getByRole('button', { name: 'Chairs', exact: true }).click();
   await expect(page.getByTestId('product-card')).toHaveCount(1);
   await expect(page.getByTestId('product-card')).toContainText('Elm Accent Chair');
-  const search = page.getByRole('searchbox', { name: 'Search products by name, category, or tag' });
+  const search = page.getByRole('searchbox', {
+    name: 'Search product names, descriptions, or tags',
+  });
   await search.fill('zzzz-no-match');
   await expect(page.getByRole('heading', { name: 'A little room to try again.' })).toBeVisible();
   await page.getByRole('button', { name: 'Explore all furniture', exact: true }).click();
@@ -70,7 +79,7 @@ test('product gallery, tags, related pieces, and enquiry context work', async ({
   await page.goBack();
   await page.getByRole('link', { name: 'green', exact: true }).click();
   await expect(page).toHaveURL(/search\?q=green/);
-  await expect(page.getByTestId('product-card')).toHaveCount(2);
+  await expect(page.getByTestId('product-card')).toHaveCount(3);
   await page.goto('/products/olive-lounge-sofa');
   await page.getByTestId('product-card').first().getByRole('link').click();
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Sienna Lounge Sofa');
@@ -118,11 +127,18 @@ test('search traps keyboard focus and Escape restores its trigger', async ({ pag
   await expect(trigger).toBeFocused();
 });
 
-test('contact uses honest placeholders and unknown routes recover', async ({ page }) => {
+test('contact shows confirmed business details and unknown routes recover', async ({ page }) => {
   await page.goto('/contact');
-  await expect(page.getByText('Store address to be confirmed.', { exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Open in Google Maps' })).toBeDisabled();
-  expect(await page.locator('a[href^="tel:"]').count()).toBe(0);
+  await expect(page.getByText('Store address to be confirmed.', { exact: true })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'Open in Google Maps' })).toBeVisible();
+  await expect(
+    page.locator('#main-content').getByRole('link', { name: '+91 9782549345', exact: true }),
+  ).toHaveAttribute('href', 'tel:+919782549345');
+  await expect(
+    page.locator('#main-content').getByRole('link', { name: '+91 7615932887', exact: true }),
+  ).toHaveAttribute('href', 'tel:+917615932887');
+  expect(await page.locator('a[href^="mailto:"]').count()).toBe(0);
+  await expect(page.getByText('Opening hours', { exact: true })).toHaveCount(0);
   for (const route of ['/does-not-exist', '/products/missing-product']) {
     await page.goto(route);
     await expect(page.getByRole('heading', { level: 1 })).toContainText('comfortable');
@@ -134,7 +150,7 @@ test('contact uses honest placeholders and unknown routes recover', async ({ pag
 test('Shop supports tag-only search alongside category filters and sorting', async ({ page }) => {
   await page.goto('/shop');
   await page
-    .getByRole('searchbox', { name: 'Search products by name, category, or tag' })
+    .getByRole('searchbox', { name: 'Search product names, descriptions, or tags' })
     .fill('reading corner');
   await expect(page.getByTestId('product-card')).toHaveCount(1);
   await expect(page.getByTestId('product-card')).toContainText('Elm Accent Chair');
@@ -211,6 +227,9 @@ for (const width of [360, 390, 393, 768, 1024, 1440]) {
     ];
     for (const route of routes) {
       await page.goto(route);
+      if (route === '/shop') await expect(page.getByTestId('product-card').first()).toBeVisible();
+      if (route === '/search?q=oak')
+        await expect(page.getByTestId('product-card').first()).toBeVisible();
       await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
       const header = page.locator('header');
       await expect(header.getByRole('link', { name: 'Manglam Furniture home' })).toBeVisible();

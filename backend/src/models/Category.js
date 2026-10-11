@@ -18,6 +18,7 @@ const categorySchema = new mongoose.Schema(
       match: /^[a-z0-9]+(?:-[a-z0-9]+)*$/,
     },
     description: { type: String, trim: true },
+    referenceVersion: { type: Number, default: 0, select: false },
   },
   { timestamps: true },
 );

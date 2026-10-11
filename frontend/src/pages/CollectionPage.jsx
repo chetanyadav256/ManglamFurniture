@@ -7,15 +7,9 @@ import FilterControls from '../components/FilterControls';
 import Modal from '../components/Modal';
 import ProductCard from '../components/ProductCard';
 import VisitBanner from '../components/VisitBanner';
-import {
-  categories,
-  filterProducts,
-  getCategory,
-  materials,
-  priceOptions,
-  sortOptions,
-} from '../data/catalog';
+import { materials, priceOptions, sortOptions } from '../data/catalog';
 import usePageTitle from '../hooks/usePageTitle';
+import useShopCatalog from '../hooks/useShopCatalog';
 
 export default function CollectionPage({ searchMode = false }) {
   const [params, setParams] = useSearchParams();
@@ -30,7 +24,7 @@ export default function CollectionPage({ searchMode = false }) {
   const query = params.get('q') || '';
   const filters = {
     query,
-    category: getCategory(params.get('category')) ? params.get('category') : '',
+    category: params.get('category') || '',
     material: materials.includes(params.get('material')) ? params.get('material') : '',
     price: priceOptions.some((option) => option.value === params.get('price'))
       ? params.get('price')
@@ -39,7 +33,12 @@ export default function CollectionPage({ searchMode = false }) {
       ? params.get('sort')
       : 'featured',
   };
-  const results = filterProducts(filters);
+  const shop = useShopCatalog(filters, true);
+  const categories = shop.categories;
+  const selectedCategory = categories.find((category) => category.id === filters.category);
+  const loading = shop.loading;
+  const error = shop.error;
+  const results = loading || error ? [] : shop.results;
   const filterCount = [filters.category, filters.material, filters.price].filter(Boolean).length;
   usePageTitle(searchMode ? (query ? `Search: ${query}` : 'Search furniture') : 'Our collection');
 
@@ -72,7 +71,7 @@ export default function CollectionPage({ searchMode = false }) {
             </h1>
             <p className="mx-auto mt-4 max-w-lg text-sm leading-7 text-bark">
               {searchMode
-                ? 'Search a name, a room, or a detail you love. Let inspiration lead the way.'
+                ? 'Search product names, descriptions, or tags, then narrow results by category.'
                 : 'From the first coffee to the last conversation. Discover furniture for the moments in between.'}
             </p>
           </div>
@@ -101,7 +100,7 @@ export default function CollectionPage({ searchMode = false }) {
             <h2 className="font-display text-4xl wrap-anywhere text-walnut">
               {searchMode && query.trim()
                 ? `Results for “${query.trim()}”`
-                : getCategory(filters.category)?.name || 'All furniture'}
+                : selectedCategory?.name || 'All furniture'}
             </h2>
           </div>
           <form
@@ -110,7 +109,7 @@ export default function CollectionPage({ searchMode = false }) {
             onSubmit={(event) => event.preventDefault()}
           >
             <label htmlFor="collection-search" className="sr-only">
-              Search products by name, category, or tag
+              Search product names, descriptions, or tags
             </label>
             <Search
               size={17}
@@ -121,7 +120,7 @@ export default function CollectionPage({ searchMode = false }) {
               id="collection-search"
               type="search"
               className="field pl-11 pr-11"
-              placeholder="Search names, categories, tags…"
+              placeholder="Search names, descriptions, tags…"
               value={query}
               onChange={(event) => update('q', event.target.value, true)}
             />
@@ -160,7 +159,11 @@ export default function CollectionPage({ searchMode = false }) {
 
         <div className="mb-8 flex flex-wrap items-center justify-between gap-3 border-y border-sand py-4">
           <p role="status" className="text-xs text-bark">
-            {results.length} {results.length === 1 ? 'piece' : 'pieces'} to explore
+            {error
+              ? 'Unable to load the collection.'
+              : loading
+                ? 'Loading furniture…'
+                : `${results.length} ${results.length === 1 ? 'piece' : 'pieces'} to explore`}
           </p>
           <div className="flex max-w-full items-center gap-3">
             <button
@@ -208,14 +211,19 @@ export default function CollectionPage({ searchMode = false }) {
                 </button>
               )}
             </div>
-            <FilterControls filters={filters} onChange={update} />
+            <FilterControls
+              filters={filters}
+              onChange={update}
+              categories={categories}
+              isSample={!searchMode}
+            />
           </aside>
           <div className="min-w-0">
             {(filterCount > 0 || query) && (
               <div className="mb-6 flex flex-wrap items-center gap-2">
                 {[
                   ['q', query],
-                  ['category', getCategory(filters.category)?.name],
+                  ['category', selectedCategory?.name || filters.category],
                   ['material', filters.material],
                   [
                     'price',
@@ -232,7 +240,9 @@ export default function CollectionPage({ searchMode = false }) {
                       onClick={() => update(key, '')}
                       aria-label={`Remove ${key === 'q' ? 'search' : key}: ${value}`}
                     >
-                      <span className="truncate">{value}</span>
+                      <span className="max-lg:min-w-0 max-lg:whitespace-normal max-lg:wrap-anywhere lg:truncate">
+                        {value}
+                      </span>
                       <X size={13} className="shrink-0" />
                     </button>
                   ))}
@@ -244,7 +254,27 @@ export default function CollectionPage({ searchMode = false }) {
                 </button>
               </div>
             )}
-            {results.length ? (
+            {error ? (
+              <div
+                role="alert"
+                className="rounded-sm border border-sand bg-cream/50 px-6 py-16 text-center"
+              >
+                <h3 className="font-display text-3xl text-walnut">
+                  Unable to load the collection.
+                </h3>
+                <p className="mx-auto mt-3 max-w-sm text-sm leading-7 text-bark">{error}</p>
+                <button className="btn-primary mt-6" onClick={shop.retry}>
+                  Try again
+                </button>
+              </div>
+            ) : loading ? (
+              <div
+                role="status"
+                className="rounded-sm border border-sand bg-cream/50 px-6 py-16 text-center"
+              >
+                <p className="text-sm leading-7 text-bark">Loading furniture…</p>
+              </div>
+            ) : results.length ? (
               <div className="grid grid-cols-2 gap-x-4 gap-y-8 sm:gap-x-6 sm:gap-y-9 xl:grid-cols-3">
                 {results.map((product) => (
                   <ProductCard key={product.id} product={product} />
@@ -265,12 +295,13 @@ export default function CollectionPage({ searchMode = false }) {
               </div>
             )}
             <p className="mt-8 border-t border-sand pt-5 text-[10px] leading-6 text-bark">
-              You’re exploring a sample collection. Photographs, specifications, and prices are
-              illustrative.{' '}
+              {searchMode
+                ? 'Search results include active furniture matching names, descriptions, or tags. Contact the showroom to confirm specifications, prices, and availability.'
+                : 'Explore our furniture collection. Contact the showroom to confirm specifications, prices, and availability.'}{' '}
               <Link to="/contact" className="underline underline-offset-4">
                 View contact details
               </Link>{' '}
-              for future product enquiries.
+              for product enquiries.
             </p>
           </div>
         </div>
@@ -295,14 +326,22 @@ export default function CollectionPage({ searchMode = false }) {
             </button>
           </div>
           <div className="flex-1 overflow-y-auto p-6">
-            <FilterControls prefix="mobile-filter" filters={filters} onChange={update} />
+            <FilterControls
+              prefix="mobile-filter"
+              filters={filters}
+              onChange={update}
+              categories={categories}
+              isSample={!searchMode}
+            />
           </div>
           <div className="flex gap-3 border-t border-sand bg-white p-5">
             <button className="btn-outline px-4" onClick={clearFilters}>
               Reset
             </button>
             <button className="btn-primary flex-1" onClick={() => setDrawerOpen(false)}>
-              Show {results.length} {results.length === 1 ? 'piece' : 'pieces'}
+              {loading
+                ? 'Loading…'
+                : `Show ${results.length} ${results.length === 1 ? 'piece' : 'pieces'}`}
               <ArrowRight size={15} />
             </button>
           </div>

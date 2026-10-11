@@ -39,8 +39,9 @@ export default function AdminLayout() {
         <div className="flex items-start gap-2 border-b border-sand bg-cream px-5 py-3 text-[11px] leading-5 text-walnut sm:px-7 lg:px-9">
           <FlaskConical size={15} className="mt-0.5 shrink-0" />
           <p>
-            <strong className="font-semibold">UI preview</strong> · No authentication. Changes stay
-            in memory, reset on refresh, and do not change the public catalog.
+            <strong className="font-semibold">Admin workspace</strong> · Authentication is verified
+            by the backend. Catalog, product, category, profile, and password settings use the
+            connected backend.
           </p>
         </div>
         <main
@@ -53,7 +54,7 @@ export default function AdminLayout() {
         <footer className="mx-5 flex flex-wrap justify-between gap-2 border-t border-sand py-5 text-[10px] text-bark sm:mx-7 lg:mx-9">
           <span>Manglam Furniture · Catalog studio</span>
           <Link to="/admin/login" className="underline underline-offset-4">
-            About this UI preview
+            Admin access
           </Link>
         </footer>
       </div>

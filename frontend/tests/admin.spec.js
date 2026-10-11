@@ -1,17 +1,40 @@
 import { test, expect } from '@playwright/test';
-import path from 'node:path';
+import { mockShopApi } from './shopApiFixture';
+import { navigateWithinAdmin, signInToAdmin, testAdmin } from './adminAuthFixture';
+import { mockAdminCategoryApi } from './adminCategoryFixture';
 
-const asset = (name) => path.resolve('public/images', name);
 const productName = 'Preview Sheesham Dining Chair';
 
-test('login and settings are honest UI previews, with no credential persistence or API calls', async ({
+test('admin login uses the backend, settings display the account read-only, and logout clears auth', async ({
   page,
 }) => {
+  await mockShopApi(page);
   const apiCalls = [];
+  let loginAttempts = 0;
   page.on('request', (request) => {
-    if (request.method() !== 'GET' || new URL(request.url()).pathname.startsWith('/api/'))
-      apiCalls.push(request.url());
+    if (new URL(request.url()).pathname.startsWith('/api/admin/')) {
+      apiCalls.push({ method: request.method(), pathname: new URL(request.url()).pathname });
+    }
   });
+  await page.route('**/api/admin/login', (route) => {
+    loginAttempts += 1;
+    return route.fulfill({
+      status: loginAttempts === 1 ? 401 : 200,
+      contentType: 'application/json',
+      body: JSON.stringify(
+        loginAttempts === 1
+          ? { message: 'Invalid email or password.' }
+          : { token: 'mock-admin-token', admin: testAdmin },
+      ),
+    });
+  });
+  await page.route('**/api/admin/me', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ admin: testAdmin }),
+    }),
+  );
   await page.goto('/admin');
   await expect(page).toHaveURL('/admin/login');
   await page.getByRole('button', { name: 'Login', exact: true }).click();
@@ -27,51 +50,47 @@ test('login and settings are honest UI previews, with no credential persistence 
   await expect(page.locator('#login-password')).toHaveAttribute('type', 'text');
   await page.getByRole('button', { name: 'Hide password', exact: true }).click();
   await page.getByRole('button', { name: 'Login', exact: true }).click();
-  await expect(page.getByRole('alert')).toContainText('Authentication is not connected');
+  await expect(page.getByRole('alert')).toHaveText('Invalid email or password.');
   await expect(page.locator('#login-password')).toHaveValue('');
-  await page.getByRole('link', { name: 'Open dashboard preview' }).click();
+  await page.locator('#login-password').fill('correct-password');
+  await page.getByRole('button', { name: 'Login', exact: true }).click();
   await expect(page).toHaveURL('/admin/dashboard');
   await page.getByLabel('Admin profile options').click();
   await page.getByRole('link', { name: 'Profile & settings' }).click();
   await expect(page).toHaveURL('/admin/settings');
-  await page.getByLabel('Display name').fill('Sample Manager');
-  await page.getByLabel('Email (preview only)').fill('invalid');
-  await page.getByRole('button', { name: 'Save preview profile' }).click();
-  await expect(page.getByRole('alert')).toContainText('valid preview email');
-  await page.getByLabel('Email (preview only)').fill('manager@example.test');
-  await page.getByRole('button', { name: 'Save preview profile' }).click();
-  await expect(page.getByRole('status')).toContainText('Preview profile updated');
-  await expect(page.getByLabel('Admin profile options')).toContainText('Sample Manager');
-  await page.getByRole('button', { name: 'Preview password change' }).click();
+  await expect(page.getByLabel('Display name')).toHaveValue(testAdmin.name);
+  await expect(page.getByLabel('Display name')).toBeEditable();
+  await expect(page.getByLabel('Email (login identifier)')).toHaveValue(testAdmin.email);
+  await expect(page.getByLabel('Email (login identifier)')).toHaveAttribute('readonly', '');
+  await expect(page.getByRole('button', { name: 'Save profile', exact: true })).toBeEnabled();
+  await expect(page.getByLabel('Admin profile options')).toContainText(testAdmin.name);
+  await page.getByRole('button', { name: 'Change password' }).click();
   await expect(page.getByRole('alert')).toContainText('Complete all three');
   await page.locator('#settings-password-current').fill('sample-current');
   await page.locator('#settings-password-next').fill('short');
   await page.locator('#settings-password-confirm').fill('short');
-  await page.getByRole('button', { name: 'Preview password change' }).click();
+  await page.getByRole('button', { name: 'Change password' }).click();
   await expect(page.getByRole('alert')).toContainText('at least 12');
   await page.locator('#settings-password-next').fill('sample-new-password');
-  await page.getByRole('button', { name: 'Preview password change' }).click();
+  await page.getByRole('button', { name: 'Change password' }).click();
   await expect(page.getByRole('alert')).toContainText('do not match');
-  await page.locator('#settings-password-confirm').fill('sample-new-password');
-  await page.getByRole('button', { name: 'Preview password change' }).click();
-  await expect(page.getByRole('status').filter({ hasText: 'Password updates' })).toContainText(
-    'No credentials were verified, sent, or stored',
-  );
-  for (const key of ['current', 'next', 'confirm'])
-    await expect(page.locator(`#settings-password-${key}`)).toHaveValue('');
   expect(await page.evaluate(() => [localStorage.length, sessionStorage.length])).toEqual([0, 0]);
-  expect(apiCalls).toEqual([]);
-  await page.getByRole('link', { name: 'Logout (exit UI preview)', exact: true }).click();
+  expect(
+    apiCalls.some(({ method, pathname }) => method === 'POST' && pathname.endsWith('/login')),
+  ).toBe(true);
+  expect(
+    apiCalls.some(({ method, pathname }) => method === 'GET' && pathname.endsWith('/me')),
+  ).toBe(true);
+  await page.locator('#main-content').getByRole('button', { name: 'Logout', exact: true }).click();
   await expect(page).toHaveURL('/admin/login');
-  await page.getByRole('link', { name: 'Open dashboard preview' }).click();
-  await expect(page.getByLabel('Admin profile options')).toContainText('Sample Manager');
   await page.reload();
-  await expect(page.getByLabel('Admin profile options')).toContainText('Admin preview');
+  await page.goto('/admin/dashboard');
+  await expect(page).toHaveURL('/admin/login');
 });
 
-async function fillProduct(page) {
+async function fillProduct(page, categoryId) {
   await page.getByLabel('Product name').fill(productName);
-  await page.locator('#product-category').selectOption('chairs');
+  await page.locator('#product-category').selectOption(categoryId);
   await page.getByLabel('Price (₹ INR)').fill('14500.50');
   await page
     .getByLabel('Description')
@@ -85,14 +104,48 @@ async function fillProduct(page) {
   await page.getByLabel('Height (cm)').fill('86');
 }
 
-test('add/edit product, normalized tags, and main-image selection persist through preview navigation', async ({
+async function isolatedShopApi(page) {
+  const state = await mockShopApi(page);
+  state.products = state.products.map((product) => ({
+    ...product,
+    tags: [...product.tags],
+    images: [...product.images],
+  }));
+  await page.route('**/api/admin/products/*/images', async (route) => {
+    const id = new URL(route.request().url()).pathname.split('/').at(-2);
+    const product = state.products.find((item) => item.id === id);
+    await route.fulfill({
+      status: product ? 200 : 404,
+      contentType: 'application/json',
+      body: JSON.stringify(
+        product
+          ? {
+              product: {
+                ...product,
+                images: product.images.map((image, index) => ({
+                  ...image,
+                  imageId: (index + 1).toString(16).repeat(64),
+                })),
+              },
+            }
+          : { message: 'Active product not found.' },
+      ),
+    });
+  });
+  return state;
+}
+
+test('add/edit product uses backend data, normalizes tags, and supports image management', async ({
   page,
 }) => {
-  await page.goto('/admin/products/new');
+  const state = await isolatedShopApi(page);
+  const category = state.categories.find((item) => item.slug === 'chairs');
+  await signInToAdmin(page);
+  await navigateWithinAdmin(page, '/admin/products/new');
   await page.getByRole('button', { name: 'Save product', exact: true }).click();
   await expect(page.getByRole('alert').first()).toContainText('highlighted fields');
   await expect(page.getByLabel('Product name')).toHaveAttribute('aria-invalid', 'true');
-  await fillProduct(page);
+  await fillProduct(page, category.id);
   await page.getByLabel('Price (₹ INR)').fill('-5');
   await page.getByRole('button', { name: 'Save product', exact: true }).click();
   await expect(page.locator('#product-price-error')).toContainText('positive price');
@@ -108,98 +161,135 @@ test('add/edit product, normalized tags, and main-image selection persist throug
   await expect(page.getByRole('alert').filter({ hasText: 'already been added' })).toBeVisible();
   await tags.fill('reading corner');
   await page.getByRole('button', { name: 'Add', exact: true }).click();
-  await page
-    .getByLabel('Select product images')
-    .setInputFiles([asset('chair.webp'), asset('accent-chair.webp')]);
-  await expect(page.getByRole('img', { name: /Product preview/ })).toHaveCount(2);
-  const second = await page.getByRole('img', { name: /^Product preview 2/ }).getAttribute('src');
-  await page.getByRole('button', { name: 'Set image 2 as main', exact: true }).click();
-  await expect(page.getByRole('img', { name: /^Product preview 1/ })).toHaveAttribute(
-    'src',
-    second,
-  );
+  await expect(page.getByLabel('Select product images')).toBeEnabled();
+  let created;
+  let submitted;
+  await page.route('**/api/admin/products', async (route) => {
+    const payload = route.request().postDataJSON();
+    submitted = payload;
+    created = {
+      id: '507f1f77bcf86cd799439099',
+      ...payload,
+      category,
+      images: [],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    state.products.unshift(created);
+    await route.fulfill({
+      status: 201,
+      contentType: 'application/json',
+      body: JSON.stringify({ product: created }),
+    });
+  });
   await page.getByRole('button', { name: 'Save product', exact: true }).click();
   await expect(page).toHaveURL('/admin/products');
-  await expect(
-    page.getByRole('status').filter({ hasText: 'added in the UI preview' }),
-  ).toBeVisible();
+  expect(submitted).toMatchObject({
+    name: productName,
+    category: category.id,
+    price: 14500.5,
+    dimensions: { length: 55, width: 48, height: 86 },
+    tags: ['wooden chair', 'reading corner'],
+  });
+  expect(submitted).not.toHaveProperty('images');
   const row = page.getByTestId('admin-product-row').filter({ hasText: productName });
   await expect(row).toBeVisible();
   await expect(row).toContainText('₹14,500.5');
-  await expect(row.locator('img')).toHaveAttribute('src', second);
   await row.getByRole('link', { name: `Edit ${productName}`, exact: true }).click();
   await expect(page.getByLabel('Product name')).toHaveValue(productName);
   await expect(page.getByLabel('Price (₹ INR)')).toHaveValue('14500.5');
   await expect(page.getByLabel('Length (cm)')).toHaveValue('55');
-  await expect(page.getByRole('img', { name: /Product preview/ })).toHaveCount(2);
+  await expect(page.getByRole('img', { name: /Product preview/ })).toHaveCount(0);
+  let updated;
+  await page.route(`**/api/admin/products/${created.id}`, async (route) => {
+    const changes = route.request().postDataJSON();
+    updated = changes;
+    const saved = { ...created, ...changes };
+    state.products = state.products.map((item) => (item.id === created.id ? saved : item));
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ product: saved }),
+    });
+  });
   await page.getByLabel('Product name').fill('Updated Sheesham Dining Chair');
   await page.getByRole('button', { name: 'Remove tag reading corner', exact: true }).click();
-  await page.getByRole('button', { name: 'Remove image 2', exact: true }).click();
   await page.getByRole('button', { name: 'Save changes', exact: true }).click();
   await expect(page).toHaveURL('/admin/products');
   await expect(
     page.getByTestId('admin-product-row').filter({ hasText: 'Updated Sheesham Dining Chair' }),
   ).toBeVisible();
+  expect(updated.name).toBe('Updated Sheesham Dining Chair');
+  expect(updated.tags).toEqual(['wooden chair']);
+  expect(updated).not.toHaveProperty('images');
   await page.getByLabel('Search admin products').fill('wooden chair');
   await expect(page.getByTestId('admin-product-row')).toHaveCount(1);
-  await page.getByRole('link', { name: 'Edit Updated Sheesham Dining Chair', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Remove tag reading corner' })).toHaveCount(0);
-  await expect(page.getByRole('img', { name: /Product preview/ })).toHaveCount(1);
 });
 
-test('product filters, sorting, pagination, and delete confirmation work without changing the public catalog', async ({
+test('product filters, sorting, pagination, and confirmed deactivation refresh the active catalog', async ({
   page,
 }) => {
-  await page.goto('/admin/products');
+  const state = await isolatedShopApi(page);
+  await signInToAdmin(page);
+  await navigateWithinAdmin(page, '/admin/products');
   await expect(page.getByTestId('admin-product-row')).toHaveCount(8);
   await page.getByRole('button', { name: 'Next product page' }).click();
   await expect(page.getByTestId('admin-product-row')).toHaveCount(4);
-  await page.getByLabel('Search admin products').fill('reading corner');
+  await page.getByLabel('Search admin products').fill('Elm Accent');
   await expect(page.getByTestId('admin-product-row')).toHaveCount(1);
   await expect(page.getByTestId('admin-product-row')).toContainText('Elm Accent Chair');
-  await page.getByLabel('Filter by category').selectOption('sofas');
+  const sofaCategoryId = state.categories.find((item) => item.slug === 'sofas').id;
+  await page.getByLabel('Filter by category').selectOption(sofaCategoryId);
   await expect(page.getByRole('heading', { name: 'No matching pieces.' })).toBeVisible();
   await page.getByRole('button', { name: 'Clear filters', exact: true }).first().click();
   await page.getByLabel('Sort admin products').selectOption('price-asc');
   await expect(page.getByTestId('admin-product-row').first()).toContainText('Nook Side Table');
   await page.getByLabel('Sort admin products').selectOption('price-desc');
   await expect(page.getByTestId('admin-product-row').first()).toContainText('Verdant Dining Set');
-  await page.getByLabel('Filter by category').selectOption('sofas');
+  await page.getByLabel('Filter by category').selectOption(sofaCategoryId);
   await expect(page.getByTestId('admin-product-row')).toHaveCount(2);
+  const olive = state.products.find((item) => item.name === 'Olive Lounge Sofa');
+  await page.route(`**/api/admin/products/${olive.id}`, async (route) => {
+    expect(route.request().method()).toBe('DELETE');
+    expect(route.request().headers().authorization).toBe('Bearer mock-admin-token');
+    state.products = state.products.filter((item) => item.id !== olive.id);
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ message: 'Product deactivated.', productId: olive.id }),
+    });
+  });
   await page.getByRole('button', { name: 'Delete Olive Lounge Sofa', exact: true }).click();
-  const dialog = page.getByRole('dialog', { name: 'Delete this product?' });
+  const dialog = page.getByRole('dialog', { name: 'Deactivate this product?' });
   await expect(dialog).toContainText('Olive Lounge Sofa');
   await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
   await expect(page.getByTestId('admin-product-row')).toHaveCount(2);
   await page.getByRole('button', { name: 'Delete Olive Lounge Sofa', exact: true }).click();
-  await dialog.getByRole('button', { name: 'Delete', exact: true }).click();
+  await dialog.getByRole('button', { name: 'Deactivate', exact: true }).click();
   await expect(dialog).not.toBeVisible();
   await expect(page.getByTestId('admin-product-row')).toHaveCount(1);
   await expect(
-    page.getByRole('status').filter({ hasText: 'deleted from the UI preview' }),
+    page.getByRole('status').filter({ hasText: 'deactivated and removed from the public catalog' }),
   ).toBeVisible();
   await page
     .getByRole('navigation', { name: 'Admin navigation', exact: true })
     .getByRole('link', { name: 'Overview' })
     .click();
-  await expect(
-    page
-      .getByRole('heading', { name: 'Total products', exact: true })
-      .locator('../..')
-      .getByText('11', { exact: true }),
-  ).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Active products', exact: true })).toBeVisible();
   await page.getByRole('link', { name: 'View website', exact: true }).click();
   await page.getByRole('link', { name: 'Explore collection', exact: true }).click();
-  await expect(page.getByTestId('product-card')).toHaveCount(12);
-  await expect(
-    page.getByRole('link', { name: 'View Olive Lounge Sofa', exact: true }),
-  ).toBeVisible();
+  await expect(page.getByTestId('product-card')).toHaveCount(11);
+  await expect(page.getByRole('link', { name: 'View Olive Lounge Sofa', exact: true })).toHaveCount(
+    0,
+  );
 });
 
 test('categories support add, rename, duplicate prevention, and safe deletion', async ({
   page,
 }) => {
-  await page.goto('/admin/categories');
+  const state = await mockAdminCategoryApi(page);
+  await signInToAdmin(page);
+  await navigateWithinAdmin(page, '/admin/categories');
   await page.getByRole('button', { name: 'Add category', exact: true }).click();
   const editor = page.getByRole('dialog', { name: 'Add a category' });
   await editor.getByLabel('Category name').fill('  SOFAS  ');
@@ -208,44 +298,23 @@ test('categories support add, rename, duplicate prevention, and safe deletion', 
   await editor.getByLabel('Category name').fill('Home Decor');
   await editor.getByRole('button', { name: 'Save category', exact: true }).click();
   await expect(editor).not.toBeVisible();
-  await expect(page.getByTestId('admin-category-card')).toHaveCount(8);
+  await expect(page.getByTestId('admin-category-card')).toHaveCount(state.categories.length);
+  expect(state.lastPayload).toEqual({ name: 'Home Decor' });
+  expect(state.categories.find((category) => category.name === 'Home Decor').slug).toBe(
+    'home-decor',
+  );
   await page.getByRole('button', { name: 'Edit category Home Decor', exact: true }).click();
   await page.getByLabel('Category name').fill('Home Accents');
   await page.getByRole('button', { name: 'Save category', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Home Accents', exact: true })).toBeVisible();
-  await page
-    .getByRole('navigation', { name: 'Admin navigation', exact: true })
-    .getByRole('link', { name: 'Products', exact: true })
-    .click();
-  await page.getByRole('link', { name: 'Edit Olive Lounge Sofa', exact: true }).click();
-  await page.locator('#product-category').selectOption({ label: 'Home Accents' });
-  await page.getByRole('button', { name: 'Save changes', exact: true }).click();
-  await expect(page).toHaveURL('/admin/products');
-  await expect(
-    page.getByTestId('admin-product-row').filter({ hasText: 'Olive Lounge Sofa' }),
-  ).toContainText('Home Accents');
-  await page
-    .getByRole('navigation', { name: 'Admin navigation', exact: true })
-    .getByRole('link', { name: 'Categories', exact: true })
-    .click();
-  const card = page.getByTestId('admin-category-card').filter({ hasText: 'Home Accents' });
-  await expect(card).toContainText('1 product');
-  await card.getByRole('button', { name: 'Delete category Home Accents' }).click();
+  const sofas = page.getByTestId('admin-category-card').filter({ hasText: 'Sofas' });
+  await sofas.getByRole('button', { name: 'Delete category Sofas' }).click();
   const blocked = page.getByRole('dialog', { name: 'This category has products.' });
   await expect(
     blocked.getByRole('button', { name: 'Delete category', exact: true }),
   ).toBeDisabled();
   await blocked.getByRole('button', { name: 'Cancel', exact: true }).click();
-  await card.getByRole('link', { name: 'View products', exact: true }).click();
-  await expect(page.getByTestId('admin-product-row')).toHaveCount(1);
-  await page.getByRole('link', { name: 'Edit Olive Lounge Sofa', exact: true }).click();
-  await page.locator('#product-category').selectOption('sofas');
-  await page.getByRole('button', { name: 'Save changes', exact: true }).click();
-  await expect(page).toHaveURL('/admin/products');
-  await page
-    .getByRole('navigation', { name: 'Admin navigation', exact: true })
-    .getByRole('link', { name: 'Categories', exact: true })
-    .click();
+  const card = page.getByTestId('admin-category-card').filter({ hasText: 'Home Accents' });
   await card.getByRole('button', { name: 'Delete category Home Accents' }).click();
   const confirmation = page.getByRole('dialog', { name: 'Delete this category?' });
   await confirmation.getByRole('button', { name: 'Cancel', exact: true }).click();
@@ -255,42 +324,24 @@ test('categories support add, rename, duplicate prevention, and safe deletion', 
   await expect(card).toHaveCount(0);
 });
 
-test('image selection rejects unsupported, oversized, corrupt, and excess files', async ({
-  page,
-}) => {
-  await page.goto('/admin/products/new');
+test('image picker accepts files for upload when product details are saved', async ({ page }) => {
+  await mockShopApi(page);
+  await signInToAdmin(page);
+  await navigateWithinAdmin(page, '/admin/products/new');
   const upload = page.getByLabel('Select product images');
-  await upload.setInputFiles({
-    name: 'notes.txt',
-    mimeType: 'text/plain',
-    buffer: Buffer.from('not an image'),
-  });
-  await expect(page.getByRole('alert')).toContainText('use JPEG, PNG, or WebP');
-  await upload.setInputFiles({
-    name: 'oversized.png',
-    mimeType: 'image/png',
-    buffer: Buffer.alloc(5 * 1024 * 1024 + 1),
-  });
-  await expect(page.getByRole('alert')).toContainText('5 MB');
-  await upload.setInputFiles({
-    name: 'broken.png',
-    mimeType: 'image/png',
-    buffer: Buffer.from('invalid bitmap'),
-  });
-  await expect(page.getByRole('alert')).toContainText('not a readable image');
-  await upload.setInputFiles(Array.from({ length: 9 }, () => asset('chair.webp')));
-  await expect(page.getByRole('alert')).toContainText('The limit is 8');
-  await expect(page.getByRole('img', { name: /Product preview/ })).toHaveCount(0);
-  await upload.setInputFiles(asset('chair.webp'));
-  await expect(page.getByRole('img', { name: /Product preview/ })).toHaveCount(1);
-  await expect(page.getByRole('alert')).toHaveCount(0);
+  await expect(upload).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'Choose product images' })).toContainText(
+    '0/5 images',
+  );
 });
 
 test('mobile navigation, add/edit/delete cards, and breakpoint transitions work', async ({
   page,
 }) => {
+  const state = await isolatedShopApi(page);
+  await signInToAdmin(page);
   await page.setViewportSize({ width: 360, height: 844 });
-  await page.goto('/admin/dashboard');
+  await navigateWithinAdmin(page, '/admin/dashboard');
   const trigger = page.getByRole('button', { name: 'Open admin navigation', exact: true });
   const drawer = page.getByRole('dialog', { name: 'Catalog navigation' });
   await trigger.click();
@@ -309,26 +360,65 @@ test('mobile navigation, add/edit/delete cards, and breakpoint transitions work'
   await expect(drawer).not.toBeVisible();
   await expect(page).toHaveURL('/admin/products');
   await page.getByRole('link', { name: 'Add product', exact: true }).click();
-  await fillProduct(page);
-  await page.getByLabel('Select product images').setInputFiles(asset('chair.webp'));
-  await expect(page.getByRole('img', { name: /Product preview/ })).toHaveCount(1);
+  const category = state.categories.find((item) => item.slug === 'chairs');
+  await fillProduct(page, category.id);
+  await page.getByLabel('Product name').fill('Mobile Prototype Chair');
+  await expect(page.getByLabel('Select product images')).toBeEnabled();
+  const mobileId = '507f1f77bcf86cd799439098';
+  let mobileProduct;
+  await page.route('**/api/admin/products', async (route) => {
+    const payload = route.request().postDataJSON();
+    mobileProduct = {
+      id: mobileId,
+      ...payload,
+      category,
+      images: [],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    state.products.unshift(mobileProduct);
+    await route.fulfill({
+      status: 201,
+      contentType: 'application/json',
+      body: JSON.stringify({ product: mobileProduct }),
+    });
+  });
+  await page.route(`**/api/admin/products/${mobileId}`, async (route) => {
+    if (route.request().method() === 'PATCH') {
+      mobileProduct = { ...mobileProduct, ...route.request().postDataJSON() };
+      state.products = state.products.map((item) => (item.id === mobileId ? mobileProduct : item));
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ product: mobileProduct }),
+      });
+    } else {
+      state.products = state.products.filter((item) => item.id !== mobileId);
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ message: 'Product deactivated.', productId: mobileId }),
+      });
+    }
+  });
   await page.getByRole('button', { name: 'Save product', exact: true }).click();
-  const card = page.getByTestId('admin-product-card').filter({ hasText: productName });
+  const card = page.getByTestId('admin-product-card').filter({ hasText: 'Mobile Prototype Chair' });
   await expect(card).toBeVisible();
-  await card.getByRole('link', { name: `Edit ${productName}`, exact: true }).click();
+  await card.getByRole('link', { name: 'Edit Mobile Prototype Chair', exact: true }).click();
   await page.getByLabel('Product name').fill('Mobile Preview Chair');
   await page.getByRole('button', { name: 'Save changes', exact: true }).click();
   await page
     .getByTestId('admin-product-card')
     .getByRole('button', { name: 'Delete Mobile Preview Chair', exact: true })
     .click();
-  await page.getByRole('dialog').getByRole('button', { name: 'Delete', exact: true }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Deactivate', exact: true }).click();
   await expect(
     page.getByTestId('admin-product-card').filter({ hasText: 'Mobile Preview Chair' }),
   ).toHaveCount(0);
-  await page.getByLabel('Search admin products').fill('reading corner');
+  await page.getByLabel('Search admin products').fill('Verdant Dining Set');
   await expect(page.getByTestId('admin-product-card')).toHaveCount(1);
-  await page.getByLabel('Filter by category').selectOption('sofas');
+  const sofaCategoryId = state.categories.find((item) => item.slug === 'sofas').id;
+  await page.getByLabel('Filter by category').selectOption(sofaCategoryId);
   await expect(page.getByRole('heading', { name: 'No matching pieces.' })).toBeVisible();
   await trigger.click();
   await drawer.getByRole('button', { name: 'Close admin navigation' }).click();
@@ -348,6 +438,7 @@ for (const width of [360, 393, 768, 1024, 1440]) {
   test(`admin pages render without overflow, overlapping header controls, broken images, or browser errors at ${width}px`, async ({
     page,
   }, testInfo) => {
+    const state = await isolatedShopApi(page);
     await page.setViewportSize({ width, height: width < 500 ? 844 : 1000 });
     const errors = [];
     page.on('pageerror', (error) => errors.push(error.message));
@@ -359,11 +450,13 @@ for (const width of [360, 393, 768, 1024, 1440]) {
       'dashboard',
       'products',
       'products/new',
-      'products/olive-lounge-sofa/edit',
+      'products/000000000000000000000001/edit',
       'categories',
       'settings',
     ]) {
-      await page.goto(`/admin/${route}`);
+      if (route === 'dashboard') await signInToAdmin(page);
+      if (route !== 'login') await navigateWithinAdmin(page, `/admin/${route}`);
+      else await page.goto('/admin/login');
       await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
       if (route !== 'login') {
         const menu = page.getByRole('button', { name: 'Open admin navigation', exact: true });

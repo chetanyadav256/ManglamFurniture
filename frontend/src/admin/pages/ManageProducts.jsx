@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, PackageSearch, Search } from 'lucide-react';
 import usePageTitle from '../../hooks/usePageTitle';
 import { useAdminPreview } from '../context/AdminPreviewContext';
+import { useAdminProducts } from '../context/AdminProductsContext';
 import { normalizeTag } from '../services/adminMockService';
 import { AddProductLink, AdminPageHeading, EmptyState } from '../components/AdminUI';
 import ProductTable from '../components/ProductTable';
@@ -10,7 +11,15 @@ import ConfirmDialog from '../components/ConfirmDialog';
 
 export default function ManageProducts() {
   usePageTitle('Manage products');
-  const { products, categories, run, notify } = useAdminPreview();
+  const { notify } = useAdminPreview();
+  const {
+    products,
+    categories,
+    loading,
+    error: catalogError,
+    refresh,
+    deactivateProduct,
+  } = useAdminProducts();
   const [params] = useSearchParams();
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState(params.get('category') || '');
@@ -19,6 +28,10 @@ export default function ManageProducts() {
   const [selected, setSelected] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  useEffect(() => {
+    const match = categories.find((item) => item.id === category || item.slug === category);
+    if (match && match.id !== category) setCategory(match.id);
+  }, [categories, category]);
   const terms = normalizeTag(query).split(' ').filter(Boolean);
   const filtered = products
     .filter(
@@ -52,8 +65,8 @@ export default function ManageProducts() {
     setBusy(true);
     setError('');
     try {
-      await run('deleteProduct', selected.id);
-      notify(`“${selected.name}” deleted from the UI preview.`);
+      await deactivateProduct(selected.id);
+      notify(`“${selected.name}” has been deactivated and removed from the public catalog.`);
       setSelected(null);
     } catch (issue) {
       setError(issue.message);
@@ -68,6 +81,28 @@ export default function ManageProducts() {
         description="Keep the details of your collection beautifully in order."
         action={<AddProductLink />}
       />
+      <div
+        role="note"
+        className="mb-5 rounded-lg border border-sand bg-cream/70 px-4 py-3 text-xs leading-6 text-bark"
+      >
+        This list uses the public product endpoint, which only returns active products. Deactivated
+        products are not shown; a complete inactive-product inventory requires a future admin
+        listing endpoint.
+      </div>
+      {catalogError && (
+        <div className="mb-5">
+          <p role="alert" className="text-sm text-red-700">
+            {catalogError}
+          </p>
+          <button
+            className="mt-2 min-h-11 text-xs text-walnut underline"
+            disabled={loading}
+            onClick={() => refresh().catch(() => {})}
+          >
+            Retry loading products
+          </button>
+        </div>
+      )}
       <div className="mb-5 grid gap-3 rounded-xl border border-sand bg-white p-4 sm:grid-cols-2 xl:grid-cols-[1fr_190px_180px]">
         <div className="relative sm:col-span-2 xl:col-span-1">
           <label htmlFor="admin-product-search" className="sr-only">
@@ -128,7 +163,11 @@ export default function ManageProducts() {
           </button>
         )}
       </div>
-      {visible.length ? (
+      {loading ? (
+        <p role="status" className="py-10 text-center text-sm text-bark">
+          Loading products…
+        </p>
+      ) : visible.length ? (
         <ProductTable
           products={visible}
           categories={categories}
@@ -140,7 +179,7 @@ export default function ManageProducts() {
       ) : (
         <EmptyState
           icon={PackageSearch}
-          title={products.length ? 'No matching pieces.' : 'A fresh start for your collection.'}
+          title={products.length ? 'No matching pieces.' : 'No active products found.'}
           action={
             products.length ? (
               <button className="btn-outline rounded-md" onClick={reset}>
@@ -153,7 +192,7 @@ export default function ManageProducts() {
         >
           {products.length
             ? 'Try a different name, tag, or category.'
-            : 'Add your first product to see it here.'}
+            : 'Add your first product to see it here. Deactivated products are not included in this public listing.'}
         </EmptyState>
       )}
       {filtered.length > 0 && (
@@ -187,16 +226,16 @@ export default function ManageProducts() {
       )}
       <ConfirmDialog
         open={Boolean(selected)}
-        title="Delete this product?"
+        title="Deactivate this product?"
+        confirmLabel="Deactivate"
         busy={busy}
         error={error}
         onClose={() => setSelected(null)}
         onConfirm={remove}
       >
         <p>
-          <strong className="text-walnut">{selected?.name}</strong> will be removed from the local
-          preview. This cannot be undone within this preview; refreshing restores the original
-          samples.
+          <strong className="text-walnut">{selected?.name}</strong> will be deactivated and removed
+          from the public catalog. Its record will remain in MongoDB.
         </p>
       </ConfirmDialog>
     </>

@@ -1,6 +1,7 @@
 import { ArrowUpRight, LayoutDashboard, LogOut, Package, Settings, Shapes } from 'lucide-react';
-import { Link, NavLink } from 'react-router-dom';
+import { Link, NavLink, useNavigate } from 'react-router-dom';
 import Brand from '../../components/Brand';
+import { useAdminAuth } from '../context/AdminAuthContext';
 
 export const adminNavigation = [
   { to: '/admin/dashboard', label: 'Overview', icon: LayoutDashboard },
@@ -9,6 +10,13 @@ export const adminNavigation = [
   { to: '/admin/settings', label: 'Settings', icon: Settings },
 ];
 export default function AdminSidebar({ onNavigate }) {
+  const { logout } = useAdminAuth();
+  const navigate = useNavigate();
+  function signOut() {
+    logout();
+    navigate('/admin/login', { replace: true });
+    onNavigate?.();
+  }
   return (
     <div className="flex h-full flex-col bg-walnut px-5 py-7 text-cream">
       <div className="px-3">
@@ -45,14 +53,14 @@ export default function AdminSidebar({ onNavigate }) {
           View public website
           <ArrowUpRight size={16} />
         </Link>
-        <Link
-          to="/admin/login"
+        <button
+          type="button"
+          onClick={signOut}
           className="flex min-h-11 items-center gap-3 px-3 text-xs text-cream/75"
-          onClick={onNavigate}
         >
           <LogOut size={16} />
-          Exit UI preview
-        </Link>
+          Logout
+        </button>
       </div>
     </div>
   );

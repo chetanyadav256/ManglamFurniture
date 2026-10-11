@@ -1,11 +1,12 @@
 import { useEffect, useRef } from 'react';
 import { ChevronDown, ExternalLink, LogOut, Menu, Settings, UserRound } from 'lucide-react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import Brand from '../../components/Brand';
-import { useAdminPreview } from '../context/AdminPreviewContext';
+import { useAdminAuth } from '../context/AdminAuthContext';
 
 export default function AdminHeader({ onOpenMenu, menuOpen }) {
-  const { profile } = useAdminPreview();
+  const { admin, logout } = useAdminAuth();
+  const navigate = useNavigate();
   const dropdown = useRef(null);
   const { pathname } = useLocation();
   useEffect(() => {
@@ -69,13 +70,13 @@ export default function AdminHeader({ onOpenMenu, menuOpen }) {
               <UserRound size={18} />
             </span>
             <span className="hidden max-w-28 truncate text-xs text-walnut md:block">
-              {profile.name}
+              {admin?.name}
             </span>
             <ChevronDown size={14} className="hidden sm:block" />
           </summary>
           <div className="absolute right-0 top-[calc(100%+12px)] w-56 rounded-lg border border-sand bg-white p-2 shadow-lg">
             <p className="break-words border-b border-sand px-3 py-3 text-xs text-bark">
-              UI preview profile
+              {admin?.email}
             </p>
             <Link
               to="/admin/settings"
@@ -84,13 +85,17 @@ export default function AdminHeader({ onOpenMenu, menuOpen }) {
               <Settings size={15} />
               Profile & settings
             </Link>
-            <Link
-              to="/admin/login"
+            <button
+              type="button"
+              onClick={() => {
+                logout();
+                navigate('/admin/login', { replace: true });
+              }}
               className="flex min-h-11 items-center gap-3 rounded-md px-3 text-xs hover:bg-cream"
             >
               <LogOut size={15} />
-              Exit UI preview
-            </Link>
+              Logout
+            </button>
           </div>
         </details>
       </div>

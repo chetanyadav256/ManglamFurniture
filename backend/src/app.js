@@ -10,6 +10,7 @@ import { errorHandler, notFound } from './middleware/errorMiddleware.js';
 const app = express();
 
 app.disable('x-powered-by');
+app.set('trust proxy', env.trustProxy);
 app.use(cors({ origin: env.clientOrigins }));
 app.use(express.json({ limit: '1mb' }));
 app.use('/api/health', healthRoutes);

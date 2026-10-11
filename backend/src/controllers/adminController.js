@@ -40,3 +40,21 @@ export async function loginAdmin(req, res) {
 export function getCurrentAdmin(req, res) {
   res.set('Cache-Control', 'no-store').json({ admin: publicAdmin(req.admin) });
 }
+
+export async function updateCurrentAdmin(req, res) {
+  const body = req.body;
+  if (!body || typeof body !== 'object' || Array.isArray(body)
+    || Object.keys(body).length !== 1 || !Object.hasOwn(body, 'name')
+    || typeof body.name !== 'string' || Object.keys(req.query).length) {
+    return res.status(400).json({ message: 'Provide only the name field as a string.' });
+  }
+  const name = body.name.trim();
+  if (!name || name.length > 80) return res.status(400).json({ message: 'Name must contain 1–80 characters.' });
+  const admin = await Admin.findOneAndUpdate(
+    { _id: req.admin._id, isActive: true, role: { $in: ['admin', 'superadmin'] } },
+    { $set: { name } },
+    { new: true, runValidators: true },
+  ).select('name email role').lean();
+  if (!admin) return res.status(401).json({ message: 'Your account is no longer available. Please sign in again.' });
+  return res.set('Cache-Control', 'no-store').json({ admin: publicAdmin(admin) });
+}

@@ -1,14 +1,24 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Save } from 'lucide-react';
-import { useAdminPreview } from '../context/AdminPreviewContext';
+import { useAdminProducts } from '../context/AdminProductsContext';
 import { validateProduct } from '../services/adminMockService';
 import { BusyLabel, Field, FormAlert, panelClass } from './AdminUI';
 import ImagePicker from './ImagePicker';
 import TagInput from './TagInput';
 
 export default function ProductForm({ product }) {
-  const { categories, run, notify } = useAdminPreview();
+  const {
+    categories,
+    loading: catalogLoading,
+    error: catalogError,
+    refresh,
+    saveProduct,
+    loadProductImages,
+    uploadProductImages,
+    removeProductImage,
+    makeProductImageMain,
+  } = useAdminProducts();
   const navigate = useNavigate();
   const [values, setValues] = useState(() => ({
     name: product?.name || '',
@@ -27,6 +37,35 @@ export default function ProductForm({ product }) {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [imagesBusy, setImagesBusy] = useState(false);
+  const [imageError, setImageError] = useState('');
+  const [imageStatus, setImageStatus] = useState('');
+  const [imageStateUncertain, setImageStateUncertain] = useState(false);
+  const [mainImageId, setMainImageId] = useState(product?.images?.[0]?.imageId || '');
+  const productId = useRef(product?.id || null);
+  const savedPayload = useRef(null);
+
+  useEffect(() => {
+    if (!product?.id) return undefined;
+    let active = true;
+    setImagesBusy(true);
+    loadProductImages(product.id)
+      .then((images) => {
+        if (!active) return;
+        setValues((previous) => ({ ...previous, images }));
+        setMainImageId(images[0]?.imageId || '');
+        setImageError('');
+      })
+      .catch((issue) => {
+        if (active) setImageError(issue.message);
+      })
+      .finally(() => {
+        if (active) setImagesBusy(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [loadProductImages, product?.id]);
+
   function change(key, value) {
     setValues((previous) => ({ ...previous, [key]: value }));
     setErrors((previous) => ({ ...previous, [key]: undefined }));
@@ -43,13 +82,93 @@ export default function ProductForm({ product }) {
       'aria-describedby': errors[key] ? `product-${key}-error` : undefined,
     };
   }
+
+  function addImages(images) {
+    setValues((previous) => ({ ...previous, images }));
+    if (!images.some((image) => image.imageId === mainImageId || image.id === mainImageId)) {
+      setMainImageId(images[0]?.imageId || images[0]?.id || '');
+    }
+    setImageError('');
+  }
+
+  async function removeImage(image) {
+    if (!image.imageId) {
+      setImageError(
+        'This saved image is missing its backend image ID. Reload the product and try again.',
+      );
+      return;
+    }
+    setImagesBusy(true);
+    setImageError('');
+    setImageStatus('Removing image…');
+    try {
+      const result = await removeProductImage(productId.current, image.imageId);
+      const managedImages = result.images;
+      const pendingImages = values.images.filter((item) => item.file);
+      setValues((previous) => ({ ...previous, images: [...managedImages, ...pendingImages] }));
+      setMainImageId(managedImages[0]?.imageId || pendingImages[0]?.id || '');
+      setImageStatus(
+        result.cleanupPending
+          ? 'Image removed from the product. Cloudinary cleanup is still pending.'
+          : '',
+      );
+    } catch (issue) {
+      if (issue.status === null || issue.status >= 500) {
+        setImageStateUncertain(true);
+        setImageError(
+          `${issue.message} The server may have completed the change; reload the product before retrying image changes.`,
+        );
+      } else {
+        setImageError(issue.message);
+      }
+      setImageStatus('');
+    } finally {
+      setImagesBusy(false);
+    }
+  }
+
+  async function setMainImage(image) {
+    setImageError('');
+    if (image.file) {
+      setMainImageId(image.id);
+      return;
+    }
+    if (!image.imageId) {
+      setImageError(
+        'This saved image is missing its backend image ID. Reload the product and try again.',
+      );
+      return;
+    }
+    setImagesBusy(true);
+    setImageStatus('Updating the main image…');
+    try {
+      const managedImages = await makeProductImageMain(productId.current, image.imageId);
+      const pendingImages = values.images.filter((item) => item.file);
+      setValues((previous) => ({ ...previous, images: [...managedImages, ...pendingImages] }));
+      setMainImageId(managedImages[0]?.imageId || '');
+      setImageStatus('');
+    } catch (issue) {
+      if (issue.status === null || issue.status >= 500) {
+        setImageStateUncertain(true);
+        setImageError(
+          `${issue.message} The server may have completed the change; reload the product before retrying image changes.`,
+        );
+      } else {
+        setImageError(issue.message);
+      }
+      setImageStatus('');
+    } finally {
+      setImagesBusy(false);
+    }
+  }
+
   async function submit(event) {
     event.preventDefault();
     if (busy || imagesBusy) return;
     // Include the latest native field values, including browser autofill.
     const submission = { ...values, ...Object.fromEntries(new FormData(event.currentTarget)) };
     setValues(submission);
-    const next = validateProduct(submission, categories);
+    const next = validateProduct(submission, categories, { requireImages: false });
     setErrors(next);
     setError('');
     if (Object.keys(next).length) {
@@ -58,18 +177,123 @@ export default function ProductForm({ product }) {
       return;
     }
     setBusy(true);
+    setImageError('');
+    setImageStatus('');
+    let detailsSaved = false;
+    let uncertainImageOperation = '';
     try {
-      await run('saveProduct', submission, product?.id);
-      notify(`“${submission.name.trim()}” ${product ? 'updated' : 'added'} in the UI preview.`);
+      const payload = {
+        name: submission.name,
+        category: submission.category,
+        price: Number(submission.price),
+        description: submission.description,
+        material: submission.material,
+        color: submission.color,
+        dimensions: {
+          length: Number(submission.length),
+          width: Number(submission.width),
+          height: Number(submission.height),
+        },
+        tags: submission.tags,
+      };
+      const serializedPayload = JSON.stringify(payload);
+      detailsSaved = savedPayload.current === serializedPayload;
+      if (!productId.current || savedPayload.current !== serializedPayload) {
+        let response;
+        try {
+          response = await saveProduct(payload, productId.current);
+        } catch (issue) {
+          const savedId = issue.operationResult?.product?.id;
+          if (typeof savedId === 'string' && /^[a-f\d]{24}$/i.test(savedId)) {
+            productId.current = savedId;
+            savedPayload.current = serializedPayload;
+            detailsSaved = true;
+          }
+          throw issue;
+        }
+        const savedId = response?.product?.id || productId.current;
+        if (typeof savedId !== 'string' || !/^[a-f\d]{24}$/i.test(savedId)) {
+          throw new Error(
+            'Product details were saved, but the server did not return a product ID. Images cannot be uploaded until the product can be reloaded.',
+          );
+        }
+        productId.current = savedId;
+        savedPayload.current = serializedPayload;
+        detailsSaved = true;
+      }
+
+      let currentImages = submission.images.filter((image) => !image.file);
+      const newImages = submission.images.filter((image) => image.file);
+      if (newImages.length) {
+        uncertainImageOperation = 'upload';
+        setImageStatus('Uploading images…');
+        const existingImageCount = currentImages.length;
+        const files = newImages.map((image) => image.file);
+        const uploadedImages = await uploadProductImages(productId.current, files, (percent) => {
+          setImageStatus(`Uploading images… ${percent}%`);
+        });
+        uncertainImageOperation = '';
+        currentImages = uploadedImages;
+        setValues((previous) => ({ ...previous, images: uploadedImages }));
+        const preferredPending = newImages.find((image) => image.id === mainImageId);
+        if (preferredPending) {
+          const fileIndex = newImages.findIndex((image) => image.id === preferredPending.id);
+          const uploadedMain = uploadedImages[existingImageCount + fileIndex];
+          if (!uploadedMain?.imageId) {
+            throw new Error('Images were uploaded, but the server did not return their image IDs.');
+          }
+          setMainImageId(uploadedMain.imageId);
+          if (uploadedImages[0]?.imageId !== uploadedMain.imageId) {
+            uncertainImageOperation = 'main image update';
+            setImageStatus('Setting the main image…');
+            currentImages = await makeProductImageMain(productId.current, uploadedMain.imageId);
+            uncertainImageOperation = '';
+            setValues((previous) => ({ ...previous, images: currentImages }));
+          }
+          setMainImageId(currentImages[0]?.imageId || '');
+        } else {
+          setMainImageId(uploadedImages[0]?.imageId || '');
+        }
+      } else if (mainImageId && currentImages.length && currentImages[0]?.imageId !== mainImageId) {
+        uncertainImageOperation = 'main image update';
+        setImageStatus('Setting the main image…');
+        currentImages = await makeProductImageMain(productId.current, mainImageId);
+        uncertainImageOperation = '';
+        setValues((previous) => ({ ...previous, images: currentImages }));
+        setMainImageId(currentImages[0]?.imageId || '');
+      }
+      setImageStatus('');
       navigate('/admin/products');
     } catch (issue) {
-      setError(issue.message);
+      const outcomeUncertain =
+        uncertainImageOperation && (issue.status === null || issue.status >= 500);
+      setError(
+        detailsSaved && outcomeUncertain
+          ? `Product details were saved, but the ${uncertainImageOperation} outcome could not be confirmed. Reload the product and check its images before retrying. ${issue.message}`
+          : detailsSaved
+            ? `Product details were saved, but image management did not fully complete. ${issue.message} You can retry without creating another product.`
+            : issue.message,
+      );
+      if (outcomeUncertain) {
+        setImageStateUncertain(true);
+      }
       setBusy(false);
+      setImageStatus('');
     }
   }
   return (
     <form onSubmit={submit} noValidate aria-busy={busy}>
-      <FormAlert>{error}</FormAlert>
+      <FormAlert>{error || catalogError}</FormAlert>
+      {catalogError && (
+        <button
+          type="button"
+          className="mb-5 min-h-11 text-xs text-walnut underline"
+          disabled={catalogLoading}
+          onClick={() => refresh().catch(() => {})}
+        >
+          Retry loading categories and products
+        </button>
+      )}
       <fieldset disabled={busy} className="min-w-0">
         <legend className="sr-only">
           {product ? 'Edit product details' : 'New product details'}
@@ -191,15 +415,21 @@ export default function ProductForm({ product }) {
           <section className={panelClass}>
             <ImagePicker
               images={values.images}
-              onChange={(images) => change('images', images)}
-              disabled={busy}
+              onChange={addImages}
+              disabled={busy || catalogLoading || imagesBusy || imageStateUncertain}
               onBusyChange={setImagesBusy}
-              error={errors.images}
+              error={imageError || errors.images}
+              mainImageId={mainImageId}
+              onRemoveImage={removeImage}
+              onSetMainImage={setMainImage}
+              status={imageStatus}
             />
           </section>
         </div>
         <div className="mt-7 flex flex-col-reverse gap-3 rounded-xl border border-sand bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-[11px] leading-6 text-bark">Saving updates the local preview only.</p>
+          <p className="text-[11px] leading-6 text-bark">
+            Product details and selected images are saved to the backend.
+          </p>
           <div className="flex gap-3">
             <button
               type="button"
@@ -211,12 +441,14 @@ export default function ProductForm({ product }) {
             </button>
             <button
               type="submit"
-              disabled={busy || imagesBusy || !categories.length}
+              disabled={
+                busy || imagesBusy || imageStateUncertain || catalogLoading || !categories.length
+              }
               className="btn-primary flex-1 rounded-md sm:flex-none"
             >
               <BusyLabel
                 busy={busy || imagesBusy}
-                busyText={imagesBusy ? 'Preparing images…' : 'Saving preview…'}
+                busyText={imageStatus || (imagesBusy ? 'Preparing images…' : 'Saving product…')}
               >
                 <Save size={16} />
                 {product ? 'Save changes' : 'Save product'}

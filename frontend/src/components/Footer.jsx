@@ -45,18 +45,25 @@ export default function Footer() {
         </div>
         <div>
           <h2 className="eyebrow mb-6 text-[#dfb18d]">Come say hello</h2>
-          <p className="flex items-start gap-3 text-xs leading-6 text-cream/80">
+          <a
+            href={business.mapsUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-start gap-3 text-xs leading-6 text-cream/80"
+          >
             <MapPin size={17} className="mt-1 shrink-0" />
-            {business.address || 'Showroom address will be added soon.'}
-          </p>
-          <p className="mt-5 flex items-start gap-3 text-xs leading-6 text-cream/80">
+            {business.address}
+          </a>
+          <div className="mt-5 flex items-start gap-3 text-xs leading-6 text-cream/80">
             <Phone size={16} className="mt-1 shrink-0" />
-            {business.phone ? (
-              <a href={`tel:${business.phone.replace(/[^+\d]/g, '')}`}>{business.phone}</a>
-            ) : (
-              'Contact number coming soon.'
-            )}
-          </p>
+            <div className="flex flex-col items-start">
+              {business.phones.map((phone) => (
+                <a key={phone.href} href={phone.href} className="min-h-6">
+                  {phone.label}
+                </a>
+              ))}
+            </div>
+          </div>
           <Link
             to="/contact"
             className="mt-5 inline-flex min-h-11 items-center gap-3 border-b border-cream/40 text-xs"
@@ -69,7 +76,7 @@ export default function Footer() {
       <div className="border-t border-white/15">
         <div className="container-shell flex flex-col justify-between gap-3 py-5 text-[10px] leading-5 text-cream/65 sm:flex-row">
           <p>© {new Date().getFullYear()} Manglam Furniture.</p>
-          <p>Sample catalog · Illustrative images, specifications & prices.</p>
+          <p>Contact the showroom to confirm product specifications, prices & availability.</p>
         </div>
       </div>
     </footer>
