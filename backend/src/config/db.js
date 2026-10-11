@@ -3,11 +3,16 @@ import { env } from './env.js';
 
 export async function connectDatabase() {
   if (!env.mongodbUri) {
-    console.info('MongoDB is not configured; running the health-check-only setup.');
-    return;
+    throw new Error('MONGODB_URI must be configured before starting the API.');
   }
 
-  await mongoose.connect(env.mongodbUri, { serverSelectionTimeoutMS: 5000 });
+  // Startup awaits this connection; never log the URI or raw driver errors.
+  await mongoose.connect(env.mongodbUri, {
+    serverSelectionTimeoutMS: 30000,
+    // Public API startup must not create collections or indexes.
+    autoCreate: false,
+    autoIndex: false,
+  });
   console.info('MongoDB connected.');
 }
 
